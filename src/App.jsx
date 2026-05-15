@@ -199,6 +199,7 @@ function BuracoSelector({ buracos, onAdd, onRemove }) {
         {BURACO_TYPES.map((bt) => (
           <button
             key={bt.key}
+            type="button"
             onClick={() => onAdd(bt.key)}
             style={{
               ...btn,
@@ -234,7 +235,7 @@ function BuracoSelector({ buracos, onAdd, onRemove }) {
 
             return (
               <span
-                key={i}
+                key={`${b}-${i}`}
                 onClick={() => onRemove(i)}
                 style={{
                   padding: "6px 14px",
@@ -341,6 +342,7 @@ function TeamEntryPanel({
       />
 
       <button
+        type="button"
         onClick={onToggleNoMuerto}
         style={{
           ...btn,
@@ -369,8 +371,11 @@ function TeamEntryPanel({
 
 export default function BurakerosApp() {
   const [screen, setScreen] = useState("setup");
+  const [historyReturnScreen, setHistoryReturnScreen] = useState("setup");
+
   const [players, setPlayers] = useState(["", "", "", ""]);
   const [showRules, setShowRules] = useState(false);
+  const [roundTarget, setRoundTarget] = useState(3000);
 
   const [rounds, setRounds] = useState([[], [], []]);
 
@@ -397,7 +402,8 @@ export default function BurakerosApp() {
   const roundTotals = useMemo(() => getRoundTotals(rounds), [rounds]);
 
   const isRoundFinished = (rIdx) =>
-    roundTotals[rIdx].t1 >= 3000 || roundTotals[rIdx].t2 >= 3000;
+    roundTotals[rIdx].t1 >= roundTarget ||
+    roundTotals[rIdx].t2 >= roundTarget;
 
   const cumulativeScores = useMemo(
     () => getCumulativeScores(rounds, roundTotals, players),
@@ -435,6 +441,20 @@ export default function BurakerosApp() {
     setT2NoMuerto(false);
   };
 
+  const openHistoryFromSetup = () => {
+    setHistoryReturnScreen("setup");
+    setScreen("history");
+  };
+
+  const openHistoryFromGame = () => {
+    setHistoryReturnScreen("game");
+    setScreen("history");
+  };
+
+  const closeHistory = () => {
+    setScreen(historyReturnScreen);
+  };
+
   const startNewGame = () => {
     setScreen("game");
     setRounds([[], [], []]);
@@ -448,6 +468,7 @@ export default function BurakerosApp() {
     setRounds([[], [], []]);
     setShowRules(false);
     setGameSaved(false);
+    setRoundTarget(3000);
     resetInputs();
   };
 
@@ -471,8 +492,8 @@ export default function BurakerosApp() {
 
   const saveSubRound = () => {
     const newSub = {
-      team1Score: parseInt(t1Pts) || 0,
-      team2Score: parseInt(t2Pts) || 0,
+      team1Score: parseInt(t1Pts, 10) || 0,
+      team2Score: parseInt(t2Pts, 10) || 0,
       team1Buracos: [...t1Buracos],
       team2Buracos: [...t2Buracos],
       team1NoMuerto: t1NoMuerto,
@@ -523,6 +544,7 @@ export default function BurakerosApp() {
       const entry = {
         date: new Date().toISOString(),
         players: [...players],
+        roundTarget,
         ranking: ranked,
         rounds: rounds.map((subs, rIdx) => ({
           t1: rt[rIdx].t1,
@@ -544,6 +566,7 @@ export default function BurakerosApp() {
     rounds,
     history,
     historyLoaded,
+    roundTarget,
   ]);
 
   if (screen === "history") {
@@ -560,7 +583,8 @@ export default function BurakerosApp() {
 
         <div style={{ maxWidth: 460, margin: "0 auto" }}>
           <button
-            onClick={() => setScreen("setup")}
+            type="button"
+            onClick={closeHistory}
             style={{
               ...btn,
               background: "none",
@@ -610,7 +634,7 @@ export default function BurakerosApp() {
 
               return (
                 <div
-                  key={gIdx}
+                  key={`${game.date}-${gIdx}`}
                   style={{
                     background: "rgba(232,220,200,0.06)",
                     borderRadius: 14,
@@ -627,15 +651,27 @@ export default function BurakerosApp() {
                       marginBottom: 10,
                     }}
                   >
-                    <span style={{ color: "#8a9a8c", fontSize: 12 }}>
-                      {dateStr}
-                    </span>
+                    <div>
+                      <div style={{ color: "#8a9a8c", fontSize: 12 }}>
+                        {dateStr}
+                      </div>
+                      <div
+                        style={{
+                          color: "#666",
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}
+                      >
+                        Rondas a {game.roundTarget || 3000} pts
+                      </div>
+                    </div>
+
                     <span style={{ fontSize: 14 }}>🏆</span>
                   </div>
 
                   {game.ranking.map((p, pIdx) => (
                     <div
-                      key={pIdx}
+                      key={`${p.name}-${pIdx}`}
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
@@ -701,7 +737,7 @@ export default function BurakerosApp() {
                     >
                       {game.rounds.map((r, ri) => (
                         <div
-                          key={ri}
+                          key={`round-${ri}`}
                           style={{
                             flex: 1,
                             background: "rgba(232,220,200,0.05)",
@@ -745,6 +781,7 @@ export default function BurakerosApp() {
 
           {history.length > 0 && (
             <button
+              type="button"
               onClick={() => {
                 if (confirm("¿Borrar todo el historial?")) {
                   setHistory([]);
@@ -873,13 +910,14 @@ export default function BurakerosApp() {
             ))}
 
             <button
+              type="button"
               onClick={() => {
                 if (allFilled) startNewGame();
               }}
               style={{
                 ...btn,
                 width: "100%",
-                marginTop: 8,
+                marginTop: 12,
                 padding: "14px 0",
                 fontSize: 17,
                 background: allFilled ? gold : "#3a3a3a",
@@ -887,13 +925,93 @@ export default function BurakerosApp() {
                 letterSpacing: 1,
               }}
             >
-              COMENZAR JUEGO
+              COMENZAR CON {roundTarget}
             </button>
+
+            <div style={{ marginTop: 16 }}>
+              <p
+                style={{
+                  color: "#8a9a8c",
+                  fontSize: 12,
+                  textAlign: "center",
+                  margin: "0 0 10px",
+                }}
+              >
+                Cambiar puntaje de cierre
+              </p>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRoundTarget((prev) => Math.max(500, prev - 500))
+                  }
+                  style={{
+                    ...btn,
+                    width: 46,
+                    height: 46,
+                    fontSize: 26,
+                    lineHeight: 1,
+                    background: "rgba(232,220,200,0.06)",
+                    color: "#c4b89a",
+                    border: "1px solid rgba(232,220,200,0.18)",
+                    borderRadius: 14,
+                  }}
+                >
+                  −
+                </button>
+
+                <div
+                  style={{
+                    minWidth: 120,
+                    height: 46,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 14,
+                    background: "rgba(212,184,94,0.12)",
+                    border: "1px solid rgba(212,184,94,0.4)",
+                    color: "#d4b85e",
+                    fontFamily: "'Playfair Display', serif",
+                    fontWeight: 900,
+                    fontSize: 22,
+                  }}
+                >
+                  {roundTarget}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setRoundTarget((prev) => prev + 500)}
+                  style={{
+                    ...btn,
+                    width: 46,
+                    height: 46,
+                    fontSize: 26,
+                    lineHeight: 1,
+                    background: "rgba(232,220,200,0.06)",
+                    color: "#c4b89a",
+                    border: "1px solid rgba(232,220,200,0.18)",
+                    borderRadius: 14,
+                  }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
           </div>
 
           {historyLoaded && (
             <button
-              onClick={() => setScreen("history")}
+              type="button"
+              onClick={openHistoryFromSetup}
               style={{
                 ...btn,
                 width: "100%",
@@ -937,6 +1055,7 @@ export default function BurakerosApp() {
 
         <div style={{ maxWidth: 460, margin: "0 auto" }}>
           <button
+            type="button"
             onClick={() => {
               setEditingRound(null);
               setEditingSubIdx(null);
@@ -1003,6 +1122,7 @@ export default function BurakerosApp() {
           />
 
           <button
+            type="button"
             onClick={saveSubRound}
             style={{
               ...btn,
@@ -1020,6 +1140,7 @@ export default function BurakerosApp() {
 
           {isEditing && (
             <button
+              type="button"
               onClick={() => {
                 deleteSubRound(editingRound, editingSubIdx);
                 setEditingRound(null);
@@ -1085,6 +1206,16 @@ export default function BurakerosApp() {
 
           <div
             style={{
+              color: "#8a9a8c",
+              fontSize: 12,
+              marginBottom: 10,
+            }}
+          >
+            Rondas a {roundTarget} puntos
+          </div>
+
+          <div
+            style={{
               display: "flex",
               justifyContent: "center",
               gap: 10,
@@ -1093,6 +1224,7 @@ export default function BurakerosApp() {
             }}
           >
             <button
+              type="button"
               onClick={() => setShowRules((v) => !v)}
               style={{
                 ...btn,
@@ -1107,6 +1239,7 @@ export default function BurakerosApp() {
             </button>
 
             <button
+              type="button"
               onClick={returnToSetup}
               style={{
                 ...btn,
@@ -1121,7 +1254,8 @@ export default function BurakerosApp() {
             </button>
 
             <button
-              onClick={() => setScreen("history")}
+              type="button"
+              onClick={openHistoryFromGame}
               style={{
                 ...btn,
                 background: "none",
@@ -1159,7 +1293,7 @@ export default function BurakerosApp() {
             <br />
             Sin buraco al cierre rival: todo negativo
             <br />
-            Botar comodín: todo negativo · Meta: 3000 pts
+            Botar comodín: todo negativo · Meta: {roundTarget} pts
           </div>
         )}
 
@@ -1396,7 +1530,7 @@ export default function BurakerosApp() {
                       fontSize: 22,
                       fontWeight: 900,
                       color:
-                        totals.t1 >= 3000
+                        totals.t1 >= roundTarget
                           ? "#d4b85e"
                           : totals.t1 >= 0
                           ? "#4ade80"
@@ -1431,7 +1565,7 @@ export default function BurakerosApp() {
                       fontSize: 22,
                       fontWeight: 900,
                       color:
-                        totals.t2 >= 3000
+                        totals.t2 >= roundTarget
                           ? "#d4b85e"
                           : totals.t2 >= 0
                           ? "#4ade80"
@@ -1600,9 +1734,10 @@ export default function BurakerosApp() {
                           height: "100%",
                           width: `${Math.min(
                             100,
-                            Math.max(0, (val / 3000) * 100)
+                            Math.max(0, (val / roundTarget) * 100)
                           )}%`,
-                          background: val >= 3000 ? "#d4b85e" : "#4ade80",
+                          background:
+                            val >= roundTarget ? "#d4b85e" : "#4ade80",
                           borderRadius: 2,
                           transition: "width 0.3s",
                         }}
@@ -1614,6 +1749,7 @@ export default function BurakerosApp() {
 
               {unlocked && !finished && (
                 <button
+                  type="button"
                   onClick={() => openSubRoundEntry(rIdx)}
                   style={{
                     ...btn,
@@ -1637,7 +1773,7 @@ export default function BurakerosApp() {
                     marginTop: 4,
                   }}
                 >
-                  {totals.t1 >= 3000 ? pair1Name : pair2Name} ganó en{" "}
+                  {totals.t1 >= roundTarget ? pair1Name : pair2Name} ganó en{" "}
                   {subs.length} sub-ronda{subs.length !== 1 ? "s" : ""}
                 </div>
               )}
@@ -1648,3 +1784,4 @@ export default function BurakerosApp() {
     </div>
   );
 }
+
