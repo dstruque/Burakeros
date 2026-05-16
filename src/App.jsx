@@ -522,7 +522,7 @@ function BuracoSelector({ buracos, onAdd, onRemove }) {
             border: "1px solid rgba(248,113,113,0.2)",
           }}
         >
-          ⚠ Sin buraco puede quedar negativo
+          ⚠ Sin cerradas, todo negativo
         </div>
       )}
     </div>
