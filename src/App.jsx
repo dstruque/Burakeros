@@ -1,4 +1,32 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+Sí. Te lo dejo completo ya integrado.
+
+Cambios incluidos:
+
+Vuelve No robó el muerto (−300)
+
+Si un equipo marca No robó el muerto, no puede seleccionar que cerró
+
+Si ya había seleccionado “cerró” y luego marca “no robó el muerto”, se desmarca automáticamente
+
+La imagen compartida ahora se genera capturando la pantalla real del resultado, con caras, ranking y carrera tal cual se ve
+
+En la Carrera de Burakeros, las líneas pasan exactamente por detrás de los marcadores, incluso cuando hay empates
+
+
+Antes de pegar el código, instala esto en StackBlitz:
+
+npm install html-to-image
+
+Luego reemplaza todo src/App.jsx por esto. Mantengo la misma estructura que ya venías trabajando para historial, guardado y pantallas.
+
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
+import { toBlob } from "html-to-image";
 
 const ROTATIONS = [
   { pair1: [0, 1], pair2: [2, 3] },
@@ -207,6 +235,7 @@ function getEndTypeInfo(endType) {
 function calcSubScore(sub, teamKey) {
   const score = sub[teamKey + "Score"] || 0;
   const buracos = sub[teamKey + "Buracos"] || [];
+  const noMuerto = sub[teamKey + "NoMuerto"] || false;
   const { team: endingTeam, type: endingType } = getEndTypeInfo(sub.endType);
 
   let buracoPts = 0;
@@ -234,6 +263,9 @@ function calcSubScore(sub, teamKey) {
     total = -Math.abs(total);
   }
 
+  if (noMuerto) {
+    total -= 300;
+  }
 
   return total;
 }
@@ -474,8 +506,9 @@ function MarioPartyChart({ players, checkpoints, heartFaces }) {
 
         {playerPaths.map((path, pIdx) => {
           const color = PLAYER_COLORS[pIdx];
+
           const pts = path.map((p, i) => ({
-            x: getX(i),
+            x: getX(i) + (tieOffsets[i]?.[pIdx] || 0),
             y: getY(p.position),
           }));
 
@@ -667,264 +700,6 @@ function WinningBanner({ ranking, heartFaces }) {
       )}
     </div>
   );
-}
-
-async function generateShareImage(
-  players,
-  ranking,
-  checkpoints,
-  roundTarget,
-  lastPlaceName,
-  heartFaces
-) {
-  await document.fonts.ready;
-
-  const avatarImages = await Promise.all(
-    players.map((name) => {
-      const src = getPlayerAvatar(name, heartFaces);
-
-      if (!src) return Promise.resolve(null);
-
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = src;
-      });
-    })
-  );
-
-  const W = 540;
-  const H = 860;
-  const canvas = document.createElement("canvas");
-  canvas.width = W * 2;
-  canvas.height = H * 2;
-  const ctx = canvas.getContext("2d");
-  ctx.scale(2, 2);
-
-  const grad = ctx.createLinearGradient(0, 0, W * 0.4, H);
-  grad.addColorStop(0, "#0d1b0e");
-  grad.addColorStop(0.4, "#1a2e1c");
-  grad.addColorStop(1, "#0f1a11");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.fillStyle = "#e8dcc8";
-  ctx.font = '900 38px "Playfair Display", Georgia, serif';
-  ctx.textAlign = "center";
-  ctx.fillText("BURAKEROS", W / 2, 52);
-
-  ctx.font = "24px serif";
-  ctx.fillText("♠ ♥ ♦ ♣", W / 2, 82);
-
-  ctx.fillStyle = "#8a9a8c";
-  ctx.font = '13px "DM Sans", sans-serif';
-
-  const now = new Date();
-
-  const dateStr = now.toLocaleDateString("es", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-
-  ctx.fillText(
-    `${dateStr} · Rondas a ${roundTarget} pts`,
-    W / 2,
-    106
-  );
-
-  const winner = ranking[0];
-
-  ctx.fillStyle = "#d4b85e";
-  ctx.font = '900 30px "Playfair Display", Georgia, serif';
-  ctx.fillText(`🏆 ¡${winner.name} gana!`, W / 2, 155);
-
-  ctx.fillStyle = "#c4b89a";
-  ctx.font = '500 16px "DM Sans", sans-serif';
-  ctx.fillText(`${winner.score} puntos`, W / 2, 180);
-
-  const rankY = 220;
-  const rankColors = ["#d4b85e", "#94a3b8", "#b45309", "#555"];
-
-  ranking.forEach((p, i) => {
-    const y = rankY + i * 44;
-
-    ctx.fillStyle = rankColors[i];
-    ctx.font = '900 22px "Playfair Display", Georgia, serif';
-    ctx.textAlign = "left";
-    ctx.fillText(`${i + 1}`, 70, y);
-
-    ctx.fillStyle = "#e8dcc8";
-    ctx.font = '700 16px "DM Sans", sans-serif';
-    ctx.fillText(p.name, 100, y);
-
-    ctx.fillStyle = p.score >= 0 ? "#4ade80" : "#f87171";
-    ctx.font = '900 18px "Playfair Display", Georgia, serif';
-    ctx.textAlign = "right";
-    ctx.fillText(String(p.score), W - 70, y);
-  });
-
-  if (lastPlaceName) {
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#fda4af";
-    ctx.font = '900 17px "Playfair Display", Georgia, serif';
-    ctx.fillText(
-      `${lastPlaceName}, quedaste en el sótano!`,
-      W / 2,
-      rankY + 4 * 44 + 14
-    );
-  }
-
-  const cTop = 440;
-  const cBottom = 670;
-  const cLeft = 80;
-  const cRight = W - 45;
-  const cW = cRight - cLeft;
-  const cH = cBottom - cTop;
-  const cMarkerR = 14;
-
-  ctx.fillStyle = "#e8dcc8";
-  ctx.font = '700 16px "Playfair Display", Georgia, serif';
-  ctx.textAlign = "center";
-  ctx.fillText("Carrera de Burakeros", W / 2, cTop - 20);
-
-  ctx.fillStyle = "#c4b89a";
-  ctx.font = '600 14px "DM Sans", sans-serif';
-  ["Inicio", "R1", "R2", "R3"].forEach((label, i) => {
-    ctx.fillText(label, cLeft + (i / 3) * cW, cTop - 5);
-  });
-
-  for (let pos = 1; pos <= 4; pos++) {
-    const y = cTop + ((pos - 1) / 3) * cH;
-
-    ctx.strokeStyle = "rgba(232,220,200,0.08)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(cLeft, y);
-    ctx.lineTo(cRight, y);
-    ctx.stroke();
-
-    ctx.fillStyle = "#8a9a8c";
-    ctx.font = '700 13px "Playfair Display", Georgia, serif';
-    ctx.textAlign = "right";
-    ctx.fillText(`${pos}º`, cLeft - 12, y + 5);
-  }
-
-  const canvasTieOffsets = getTieOffsets(
-    checkpoints,
-    players,
-    cMarkerR
-  );
-
-  const paths = players.map((_, pIdx) =>
-    checkpoints.map((cp) => {
-      const entry = cp.find((e) => e.index === pIdx);
-      return entry.position;
-    })
-  );
-
-  paths.forEach((positions, pIdx) => {
-    const color = PLAYER_COLORS[pIdx];
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.globalAlpha = 0.7;
-    ctx.beginPath();
-
-    positions.forEach((pos, cpIdx) => {
-      const x = cLeft + (cpIdx / 3) * cW;
-      const y = cTop + ((pos - 1) / 3) * cH;
-
-      if (cpIdx === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        const prevX = cLeft + ((cpIdx - 1) / 3) * cW;
-        const prevY = cTop + ((positions[cpIdx - 1] - 1) / 3) * cH;
-        const cx = (prevX + x) / 2;
-        ctx.bezierCurveTo(cx, prevY, cx, y, x, y);
-      }
-    });
-
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    positions.forEach((pos, cpIdx) => {
-      const baseX = cLeft + (cpIdx / 3) * cW;
-      const ox = canvasTieOffsets[cpIdx]?.[pIdx] || 0;
-      const x = baseX + ox;
-      const y = cTop + ((pos - 1) / 3) * cH;
-      const avatarImg = avatarImages[pIdx];
-
-      if (avatarImg) {
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(x, y, cMarkerR + 2, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(x, y, cMarkerR, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(
-          avatarImg,
-          x - cMarkerR,
-          y - cMarkerR,
-          cMarkerR * 2,
-          cMarkerR * 2
-        );
-        ctx.restore();
-      } else {
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(x, y, cMarkerR, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = "#1a1a2e";
-        ctx.font = '700 13px "Playfair Display", Georgia, serif';
-        ctx.textAlign = "center";
-        ctx.fillText(
-          players[pIdx].charAt(0).toUpperCase(),
-          x,
-          y + 5
-        );
-      }
-
-      if (cpIdx === 3 && pos === 1) {
-        ctx.font = "18px serif";
-        ctx.fillText("👑", x, y - 19);
-      }
-    });
-  });
-
-  const legY = cBottom + 28;
-  const legColW = cW / 2;
-
-  players.forEach((name, i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x = cLeft + col * legColW + 10;
-    const y = legY + row * 22;
-
-    ctx.fillStyle = PLAYER_COLORS[i];
-    ctx.beginPath();
-    ctx.arc(x, y - 4, 6, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#e8dcc8";
-    ctx.font = '600 14px "DM Sans", sans-serif';
-    ctx.textAlign = "left";
-    ctx.fillText(name, x + 12, y);
-  });
-
-  ctx.fillStyle = "#555";
-  ctx.font = '11px "DM Sans", sans-serif';
-  ctx.textAlign = "center";
-  ctx.fillText("burakeros · planilla de puntuación", W / 2, H - 20);
-
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), "image/png");
-  });
 }
 
 function loadHistory() {
@@ -1184,6 +959,8 @@ function TeamEntryPanel({
   buracos,
   onAddBuraco,
   onRemoveBuraco,
+  noMuerto,
+  onToggleNoMuerto,
 }) {
   return (
     <div
@@ -1245,41 +1022,81 @@ function TeamEntryPanel({
         onRemove={onRemoveBuraco}
       />
 
+      <button
+        type="button"
+        onClick={onToggleNoMuerto}
+        style={{
+          ...btn,
+          width: "100%",
+          marginTop: 8,
+          padding: "12px 14px",
+          fontSize: 14,
+          textAlign: "left",
+          background: noMuerto
+            ? "rgba(248,113,113,0.15)"
+            : "rgba(232,220,200,0.05)",
+          color: noMuerto ? "#f87171" : "#888",
+          border: `2px solid ${
+            noMuerto
+              ? "rgba(248,113,113,0.4)"
+              : "rgba(232,220,200,0.12)"
+          }`,
+          borderRadius: 12,
+        }}
+      >
+        {noMuerto ? "✓ " : "○ "}No robó el muerto (−300)
+      </button>
     </div>
   );
 }
 
-function EndTypeSelector({ pair1Name, pair2Name, endType, onChange }) {
+function EndTypeSelector({
+  pair1Name,
+  pair2Name,
+  endType,
+  onChange,
+  team1NoMuerto,
+  team2NoMuerto,
+}) {
   const options = [
     {
       key: "team1_closed",
       label: `${pair1Name} cerró`,
-      detail: "+200",
+      detail: team1NoMuerto
+        ? "No puede cerrar si no robó el muerto"
+        : "+200",
       color: "#4ade80",
+      disabled: team1NoMuerto,
     },
     {
       key: "team2_closed",
       label: `${pair2Name} cerró`,
-      detail: "+200",
+      detail: team2NoMuerto
+        ? "No puede cerrar si no robó el muerto"
+        : "+200",
       color: "#4ade80",
+      disabled: team2NoMuerto,
     },
     {
       key: "team1_joker",
       label: `${pair1Name} botó comodín`,
       detail: "Ese equipo va negativo",
       color: "#f87171",
+      disabled: false,
     },
     {
       key: "team2_joker",
       label: `${pair2Name} botó comodín`,
       detail: "Ese equipo va negativo",
       color: "#f87171",
+      disabled: false,
     },
     {
       key: "cards_out",
       label: "Se acabaron las cartas",
       detail: "Sin buraco va negativo",
       color: "#94a3b8",
+      disabled: false,
     },
   ];
 
@@ -1314,7 +1131,10 @@ function EndTypeSelector({ pair1Name, pair2Name, endType, onChange }) {
             <button
               key={option.key}
               type="button"
-              onClick={() => onChange(option.key)}
+              disabled={option.disabled}
+              onClick={() => {
+                if (!option.disabled) onChange(option.key);
+              }}
               style={{
                 ...btn,
                 width: "100%",
@@ -1324,14 +1144,24 @@ function EndTypeSelector({ pair1Name, pair2Name, endType, onChange }) {
                 background: selected
                   ? option.color + "22"
                   : "rgba(232,220,200,0.04)",
-                color: selected ? option.color : "#c4b89a",
+                color: option.disabled
+                  ? "#666"
+                  : selected
+                  ? option.color
+                  : "#c4b89a",
                 border: `2px solid ${
-                  selected ? option.color + "88" : "rgba(232,220,200,0.1)"
+                  option.disabled
+                    ? "rgba(232,220,200,0.06)"
+                    : selected
+                    ? option.color + "88"
+                    : "rgba(232,220,200,0.1)"
                 }`,
+                opacity: option.disabled ? 0.55 : 1,
+                cursor: option.disabled ? "not-allowed" : "pointer",
               }}
             >
               <div style={{ fontSize: 14 }}>
-                {selected ? "✓ " : "○ "}
+                {selected ? "✓ " : option.disabled ? "⛔ " : "○ "}
                 {option.label}
               </div>
               <div
@@ -1370,6 +1200,8 @@ export default function BurakerosApp() {
   const [t2Pts, setT2Pts] = useState("");
   const [t1Buracos, setT1Buracos] = useState([]);
   const [t2Buracos, setT2Buracos] = useState([]);
+  const [t1NoMuerto, setT1NoMuerto] = useState(false);
+  const [t2NoMuerto, setT2NoMuerto] = useState(false);
   const [subEndType, setSubEndType] = useState(null);
 
   const [history, setHistory] = useState([]);
@@ -1385,6 +1217,8 @@ export default function BurakerosApp() {
   const [faceSetIndex, setFaceSetIndex] = useState(0);
   const [heartFaces, setHeartFaces] = useState(false);
   const [sharingImage, setSharingImage] = useState(false);
+
+  const shareResultRef = useRef(null);
 
   useEffect(() => {
     const h = loadHistory();
@@ -1441,6 +1275,8 @@ export default function BurakerosApp() {
     setT2Pts("");
     setT1Buracos([]);
     setT2Buracos([]);
+    setT1NoMuerto(false);
+    setT2NoMuerto(false);
     setSubEndType(null);
   };
 
@@ -1465,43 +1301,67 @@ export default function BurakerosApp() {
     setHeartFaces((prev) => !prev);
   };
 
+  useEffect(() => {
+    if (t1NoMuerto && subEndType === "team1_closed") {
+      setSubEndType(null);
+    }
+
+    if (t2NoMuerto && subEndType === "team2_closed") {
+      setSubEndType(null);
+    }
+  }, [t1NoMuerto, t2NoMuerto, subEndType]);
+
   const checkpoints = useMemo(
     () => getProgressiveRankings(rounds, roundTotals, players),
     [rounds, roundTotals, players]
   );
 
   const handleShareImage = useCallback(async () => {
-    if (sharingImage) return;
+    if (sharingImage || !shareResultRef.current) return;
 
     setSharingImage(true);
 
     try {
-      const lastPlace = ranking[ranking.length - 1];
-      const blob = await generateShareImage(
-        players,
-        ranking,
-        checkpoints,
-        roundTarget,
-        lastPlace.name,
-        heartFaces
+      await document.fonts.ready;
+
+      const images = Array.from(
+        shareResultRef.current.querySelectorAll("img")
       );
 
-      if (!blob) {
-        setSharingImage(false);
-        return;
-      }
+      await Promise.all(
+        images.map((img) => {
+          if (img.complete) return Promise.resolve();
+
+          return new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+          });
+        })
+      );
+
+      const blob = await toBlob(shareResultRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#0d1b0e",
+        filter: (node) => {
+          if (!(node instanceof HTMLElement)) return true;
+          return node.dataset.shareExclude !== "true";
+        },
+      });
+
+      if (!blob) return;
+
+      const file = new File([blob], "burakeros.png", {
+        type: "image/png",
+      });
 
       if (
         navigator.share &&
         navigator.canShare &&
-        navigator.canShare({
-          files: [new File([blob], "burakeros.png", { type: "image/png" })],
-        })
+        navigator.canShare({ files: [file] })
       ) {
         await navigator.share({
-          files: [
-            new File([blob], "burakeros.png", { type: "image/png" }),
-          ],
+          files: [file],
           title: "Burakeros - Resultado",
         });
       } else {
@@ -1517,7 +1377,7 @@ export default function BurakerosApp() {
     }
 
     setSharingImage(false);
-  }, [sharingImage, players, ranking, checkpoints, roundTarget, heartFaces]);
+  }, [sharingImage]);
 
   const openHistoryFromSetup = () => {
     setHistoryReturnScreen("setup");
@@ -1574,6 +1434,8 @@ export default function BurakerosApp() {
     setT2Pts(savedGamePreview.t2Pts || "");
     setT1Buracos(savedGamePreview.t1Buracos || []);
     setT2Buracos(savedGamePreview.t2Buracos || []);
+    setT1NoMuerto(savedGamePreview.t1NoMuerto || false);
+    setT2NoMuerto(savedGamePreview.t2NoMuerto || false);
     setSubEndType(savedGamePreview.subEndType || null);
 
     setFaceSetIndex(savedGamePreview.faceSetIndex || 0);
@@ -1612,20 +1474,28 @@ export default function BurakerosApp() {
       setT2Pts(String(s.team2Score || 0));
       setT1Buracos([...(s.team1Buracos || [])]);
       setT2Buracos([...(s.team2Buracos || [])]);
+      setT1NoMuerto(s.team1NoMuerto || false);
+      setT2NoMuerto(s.team2NoMuerto || false);
       setSubEndType(s.endType || null);
     } else {
       resetInputs();
     }
   };
 
+  const invalidClosingSelection =
+    (subEndType === "team1_closed" && t1NoMuerto) ||
+    (subEndType === "team2_closed" && t2NoMuerto);
+
   const saveSubRound = () => {
-    if (!subEndType) return;
+    if (!subEndType || invalidClosingSelection) return;
 
     const newSub = {
       team1Score: parseInt(t1Pts, 10) || 0,
       team2Score: parseInt(t2Pts, 10) || 0,
       team1Buracos: [...t1Buracos],
       team2Buracos: [...t2Buracos],
+      team1NoMuerto: t1NoMuerto,
+      team2NoMuerto: t2NoMuerto,
       endType: subEndType,
     };
 
@@ -1638,11 +1508,12 @@ export default function BurakerosApp() {
         updated[editingRound] = [...updated[editingRound], newSub];
       }
 
-      // If editing un-finishes this round, clear later rounds
       const totals = getRoundTotals(updated);
+
       for (let i = editingRound; i < updated.length - 1; i++) {
         const rFinished =
           totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
+
         if (!rFinished && updated[i + 1].length > 0) {
           updated[i + 1] = [];
         }
@@ -1662,11 +1533,12 @@ export default function BurakerosApp() {
       const updated = prev.map((r) => [...r]);
       updated[rIdx] = updated[rIdx].filter((_, i) => i !== sIdx);
 
-      // If deleting un-finishes this round, clear later rounds
       const totals = getRoundTotals(updated);
+
       for (let i = rIdx; i < updated.length - 1; i++) {
         const rFinished =
           totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
+
         if (!rFinished && updated[i + 1].length > 0) {
           updated[i + 1] = [];
         }
@@ -1691,6 +1563,8 @@ export default function BurakerosApp() {
           t2Pts,
           t1Buracos,
           t2Buracos,
+          t1NoMuerto,
+          t2NoMuerto,
           subEndType,
           faceSetIndex,
           heartFaces,
@@ -1716,6 +1590,8 @@ export default function BurakerosApp() {
     t2Pts,
     t1Buracos,
     t2Buracos,
+    t1NoMuerto,
+    t2NoMuerto,
     subEndType,
     faceSetIndex,
     heartFaces,
@@ -2316,6 +2192,7 @@ export default function BurakerosApp() {
         ? editingSubIdx + 1
         : rounds[editingRound].length + 1;
     const isEditing = editingSubIdx !== null;
+    const canSaveSubRound = Boolean(subEndType) && !invalidClosingSelection;
 
     return (
       <div
@@ -2379,6 +2256,8 @@ export default function BurakerosApp() {
             onRemoveBuraco={(idx) =>
               setT1Buracos((p) => p.filter((_, i) => i !== idx))
             }
+            noMuerto={t1NoMuerto}
+            onToggleNoMuerto={() => setT1NoMuerto((v) => !v)}
           />
 
           <TeamEntryPanel
@@ -2390,6 +2269,8 @@ export default function BurakerosApp() {
             onRemoveBuraco={(idx) =>
               setT2Buracos((p) => p.filter((_, i) => i !== idx))
             }
+            noMuerto={t2NoMuerto}
+            onToggleNoMuerto={() => setT2NoMuerto((v) => !v)}
           />
 
           <EndTypeSelector
@@ -2397,6 +2278,8 @@ export default function BurakerosApp() {
             pair2Name={pair2Name}
             endType={subEndType}
             onChange={setSubEndType}
+            team1NoMuerto={t1NoMuerto}
+            team2NoMuerto={t2NoMuerto}
           />
 
           <button
@@ -2407,11 +2290,11 @@ export default function BurakerosApp() {
               width: "100%",
               padding: "14px 0",
               fontSize: 17,
-              background: subEndType ? gold : "#3a3a3a",
-              color: subEndType ? "#1a1a2e" : "#777",
+              background: canSaveSubRound ? gold : "#3a3a3a",
+              color: canSaveSubRound ? "#1a1a2e" : "#777",
               letterSpacing: 1,
               marginTop: 4,
-              cursor: subEndType ? "pointer" : "not-allowed",
+              cursor: canSaveSubRound ? "pointer" : "not-allowed",
             }}
           >
             {isEditing ? "GUARDAR CAMBIOS" : "GUARDAR SUB-RONDA"}
@@ -2427,6 +2310,19 @@ export default function BurakerosApp() {
               }}
             >
               Elige cómo terminó la sub-ronda para poder guardarla.
+            </div>
+          )}
+
+          {invalidClosingSelection && (
+            <div
+              style={{
+                color: "#f87171",
+                fontSize: 12,
+                textAlign: "center",
+                marginTop: 10,
+              }}
+            >
+              Un equipo que no robó el muerto no puede haber cerrado.
             </div>
           )}
 
@@ -2464,6 +2360,7 @@ export default function BurakerosApp() {
 
     return (
       <div
+        ref={shareResultRef}
         style={{
           minHeight: "100vh",
           background: bg,
@@ -2606,7 +2503,11 @@ export default function BurakerosApp() {
                     {i + 1}
                   </span>
 
-                  <PlayerAvatar name={p.name} heartFaces={heartFaces} size={40} />
+                  <PlayerAvatar
+                    name={p.name}
+                    heartFaces={heartFaces}
+                    size={40}
+                  />
 
                   <div
                     style={{
@@ -2671,6 +2572,7 @@ export default function BurakerosApp() {
           />
 
           <button
+            data-share-exclude="true"
             type="button"
             onClick={handleShareImage}
             disabled={sharingImage}
@@ -2689,7 +2591,10 @@ export default function BurakerosApp() {
             {sharingImage ? "Generando..." : "📤 Compartir resultado"}
           </button>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          <div
+            data-share-exclude="true"
+            style={{ display: "flex", gap: 10 }}
+          >
             <button
               type="button"
               onClick={returnToSetup}
@@ -2860,7 +2765,7 @@ export default function BurakerosApp() {
             <br />
             Buraco As Limpio: 800 · As Sucio: 500
             <br />
-            Cerrar: +200
+            Cerrar: +200 · No robó muerto: −300
             <br />
             Si el rival cierra y no tienes buraco: todo negativo
             <br />
