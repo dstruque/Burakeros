@@ -287,7 +287,7 @@ function getProgressiveRankings(rounds, roundTotals, players) {
   const checkpoints = [];
 
   checkpoints.push(
-    players.map((_, i) => ({ index: i, score: 0, position: i + 1 }))
+    players.map((_, i) => ({ index: i, score: 0, position: 1 }))
   );
 
   const cumulative = players.map(() => 0);
@@ -326,12 +326,37 @@ function getProgressiveRankings(rounds, roundTotals, players) {
   return checkpoints;
 }
 
+function getTieOffsets(checkpoints, players, markerR) {
+  return checkpoints.map((cp) => {
+    const groups = {};
+
+    cp.forEach((entry) => {
+      if (!groups[entry.position]) groups[entry.position] = [];
+      groups[entry.position].push(entry.index);
+    });
+
+    const offsets = {};
+    const spacing = markerR * 2 + 3;
+
+    Object.values(groups).forEach((group) => {
+      group.forEach((pIdx, i) => {
+        offsets[pIdx] =
+          group.length > 1
+            ? (i - (group.length - 1) / 2) * spacing
+            : 0;
+      });
+    });
+
+    return offsets;
+  });
+}
+
 function MarioPartyChart({ players, checkpoints, heartFaces }) {
-  const W = 390;
-  const H = 340;
-  const padL = 38;
+  const W = 400;
+  const H = 350;
+  const padL = 48;
   const padR = 20;
-  const padT = 55;
+  const padT = 62;
   const padB = 66;
 
   const chartLeft = padL;
@@ -340,6 +365,8 @@ function MarioPartyChart({ players, checkpoints, heartFaces }) {
   const chartBottom = H - padB;
   const chartW = chartRight - chartLeft;
   const chartH = chartBottom - chartTop;
+
+  const markerR = 16;
 
   const playerPaths = useMemo(
     () =>
@@ -352,10 +379,14 @@ function MarioPartyChart({ players, checkpoints, heartFaces }) {
     [checkpoints, players]
   );
 
+  const tieOffsets = useMemo(
+    () => getTieOffsets(checkpoints, players, markerR),
+    [checkpoints, players]
+  );
+
   const getX = (cpIdx) => chartLeft + (cpIdx / 3) * chartW;
   const getY = (pos) => chartTop + ((pos - 1) / 3) * chartH;
 
-  const markerR = 16;
   const labels = ["Inicio", "R1", "R2", "R3"];
 
   const winnerIdx = checkpoints[3]
@@ -478,7 +509,9 @@ function MarioPartyChart({ players, checkpoints, heartFaces }) {
           const isWinner = pIdx === winnerIdx;
 
           return path.map((p, cpIdx) => {
-            const x = getX(cpIdx);
+            const baseX = getX(cpIdx);
+            const ox = tieOffsets[cpIdx]?.[pIdx] || 0;
+            const x = baseX + ox;
             const y = getY(p.position);
             const clipId = `mp-clip-${pIdx}-${cpIdx}`;
 
@@ -640,12 +673,30 @@ async function generateShareImage(
   players,
   ranking,
   checkpoints,
-  roundTarget
+  roundTarget,
+  lastPlaceName,
+  heartFaces
 ) {
   await document.fonts.ready;
 
+  const avatarImages = await Promise.all(
+    players.map((name) => {
+      const src = getPlayerAvatar(name, heartFaces);
+
+      if (!src) return Promise.resolve(null);
+
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+    })
+  );
+
   const W = 540;
-  const H = 780;
+  const H = 860;
   const canvas = document.createElement("canvas");
   canvas.width = W * 2;
   canvas.height = H * 2;
@@ -715,22 +766,34 @@ async function generateShareImage(
     ctx.fillText(String(p.score), W - 70, y);
   });
 
-  const cTop = 410;
-  const cBottom = 640;
-  const cLeft = 65;
+  if (lastPlaceName) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#fda4af";
+    ctx.font = '900 17px "Playfair Display", Georgia, serif';
+    ctx.fillText(
+      `${lastPlaceName}, quedaste en el sótano!`,
+      W / 2,
+      rankY + 4 * 44 + 14
+    );
+  }
+
+  const cTop = 440;
+  const cBottom = 670;
+  const cLeft = 80;
   const cRight = W - 45;
   const cW = cRight - cLeft;
   const cH = cBottom - cTop;
+  const cMarkerR = 14;
 
   ctx.fillStyle = "#e8dcc8";
   ctx.font = '700 16px "Playfair Display", Georgia, serif';
   ctx.textAlign = "center";
-  ctx.fillText("Carrera de Burakeros", W / 2, cTop - 16);
+  ctx.fillText("Carrera de Burakeros", W / 2, cTop - 20);
 
   ctx.fillStyle = "#c4b89a";
   ctx.font = '600 14px "DM Sans", sans-serif';
   ["Inicio", "R1", "R2", "R3"].forEach((label, i) => {
-    ctx.fillText(label, cLeft + (i / 3) * cW, cTop - 3);
+    ctx.fillText(label, cLeft + (i / 3) * cW, cTop - 5);
   });
 
   for (let pos = 1; pos <= 4; pos++) {
@@ -746,8 +809,14 @@ async function generateShareImage(
     ctx.fillStyle = "#8a9a8c";
     ctx.font = '700 13px "Playfair Display", Georgia, serif';
     ctx.textAlign = "right";
-    ctx.fillText(`${pos}º`, cLeft - 10, y + 5);
+    ctx.fillText(`${pos}º`, cLeft - 12, y + 5);
   }
+
+  const canvasTieOffsets = getTieOffsets(
+    checkpoints,
+    players,
+    cMarkerR
+  );
 
   const paths = players.map((_, pIdx) =>
     checkpoints.map((cp) => {
@@ -781,19 +850,45 @@ async function generateShareImage(
     ctx.globalAlpha = 1;
 
     positions.forEach((pos, cpIdx) => {
-      const x = cLeft + (cpIdx / 3) * cW;
+      const baseX = cLeft + (cpIdx / 3) * cW;
+      const ox = canvasTieOffsets[cpIdx]?.[pIdx] || 0;
+      const x = baseX + ox;
       const y = cTop + ((pos - 1) / 3) * cH;
-      const r = 14;
+      const avatarImg = avatarImages[pIdx];
 
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
+      if (avatarImg) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, cMarkerR + 2, 0, Math.PI * 2);
+        ctx.fill();
 
-      ctx.fillStyle = "#1a1a2e";
-      ctx.font = '700 13px "Playfair Display", Georgia, serif';
-      ctx.textAlign = "center";
-      ctx.fillText(players[pIdx].charAt(0).toUpperCase(), x, y + 5);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, cMarkerR, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(
+          avatarImg,
+          x - cMarkerR,
+          y - cMarkerR,
+          cMarkerR * 2,
+          cMarkerR * 2
+        );
+        ctx.restore();
+      } else {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, cMarkerR, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#1a1a2e";
+        ctx.font = '700 13px "Playfair Display", Georgia, serif';
+        ctx.textAlign = "center";
+        ctx.fillText(
+          players[pIdx].charAt(0).toUpperCase(),
+          x,
+          y + 5
+        );
+      }
 
       if (cpIdx === 3 && pos === 1) {
         ctx.font = "18px serif";
@@ -1381,11 +1476,14 @@ export default function BurakerosApp() {
     setSharingImage(true);
 
     try {
+      const lastPlace = ranking[ranking.length - 1];
       const blob = await generateShareImage(
         players,
         ranking,
         checkpoints,
-        roundTarget
+        roundTarget,
+        lastPlace.name,
+        heartFaces
       );
 
       if (!blob) {
@@ -1419,7 +1517,7 @@ export default function BurakerosApp() {
     }
 
     setSharingImage(false);
-  }, [sharingImage, players, ranking, checkpoints, roundTarget]);
+  }, [sharingImage, players, ranking, checkpoints, roundTarget, heartFaces]);
 
   const openHistoryFromSetup = () => {
     setHistoryReturnScreen("setup");
