@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "html-to-image": "^1.11.13"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
