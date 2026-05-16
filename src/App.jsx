@@ -16,15 +16,15 @@ const BURACO_TYPES = [
 const FACE_SETS = [
   {
     normal: { woman: "/mujer.png", man: "/hombre.png" },
-    hearts: { woman: "/mujerC.png", man: "/HombreC.png" },
+    hearts: { woman: "/MujerC.png", man: "/HombreC.png" },
   },
   {
-    normal: { woman: "/mujer2.png", man: "/hombre2.png" },
-    hearts: { woman: "/mujerc2.png", man: "/Hombrec2.png" },
+    normal: { woman: "/Mujer2.png", man: "/Hombre2.png" },
+    hearts: { woman: "/Mujerc2.png", man: "/Hombrec2.png" },
   },
   {
-    normal: { woman: "/mujer3.png", man: "/hombre3.png" },
-    hearts: { woman: "/mujerc3.png", man: "/Hombrec3.png" },
+    normal: { woman: "/Mujer3.png", man: "/Hombre3.png" },
+    hearts: { woman: "/Mujerc3.png", man: "/Hombrec3.png" },
   },
 ];
 
@@ -35,23 +35,23 @@ const PLAYER_AVATARS = {
   },
   lucy: {
     normal: "/mujer.png",
-    hearts: "/mujerC.png",
+    hearts: "/MujerC.png",
   },
   audrey: {
-    normal: "/mujer2.png",
-    hearts: "/mujer2c.png",
+    normal: "/Mujer2.png",
+    hearts: "/Mujerc2.png",
   },
   "juan miguel": {
-    normal: "/hombre2.png",
-    hearts: "/Hombre2c.png",
+    normal: "/Hombre2.png",
+    hearts: "/Hombrec2.png",
   },
   werner: {
-    normal: "/hombre3.png",
-    hearts: "/Hombre3c.png",
+    normal: "/Hombre3.png",
+    hearts: "/Hombrec3.png",
   },
   ivetty: {
-    normal: "/mujer3.png",
-    hearts: "/mujer3c.png",
+    normal: "/Mujer3.png",
+    hearts: "/Mujerc3.png",
   },
 };
 
