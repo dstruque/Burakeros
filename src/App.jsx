@@ -195,6 +195,10 @@ function getEndTypeInfo(endType) {
     return { team: "team2", type: "joker" };
   }
 
+  if (endType === "cards_out") {
+    return { team: null, type: "cards_out" };
+  }
+
   return { team: null, type: null };
 }
 
@@ -218,7 +222,11 @@ function calcSubScore(sub, teamKey) {
 
   if (endingType === "joker" && endingTeam === teamKey) {
     total = -Math.abs(total);
-  } else if (endingType !== "joker" && buracos.length === 0) {
+  } else if (
+    endingType === "closed" &&
+    endingTeam !== teamKey &&
+    buracos.length === 0
+  ) {
     total = -Math.abs(total);
   }
 
@@ -618,6 +626,12 @@ function EndTypeSelector({ pair1Name, pair2Name, endType, onChange }) {
       label: `${pair2Name} botó comodín`,
       detail: "Ese equipo va negativo",
       color: "#f87171",
+    },
+    {
+      key: "cards_out",
+      label: "Se acabaron las cartas",
+      detail: "Nadie cerró",
+      color: "#94a3b8",
     },
   ];
 
@@ -2096,6 +2110,8 @@ export default function BurakerosApp() {
             Si botas comodín: tu equipo va negativo
             <br />
             Si el rival bota comodín: tú no recibes penalización por no tener buraco
+            <br />
+            Si se acaban las cartas: nadie cierra
           </div>
         )}
 
@@ -2370,6 +2386,10 @@ export default function BurakerosApp() {
                           : `${pair2Name} botó comodín`;
                     }
 
+                    if (endInfo.type === "cards_out") {
+                      endText = "Se acabaron las cartas · Nadie cerró";
+                    }
+
                     return (
                       <div
                         key={sIdx}
@@ -2501,6 +2521,8 @@ export default function BurakerosApp() {
                               color:
                                 endInfo.type === "joker"
                                   ? "#f87171"
+                                  : endInfo.type === "cards_out"
+                                  ? "#94a3b8"
                                   : "#d4b85e",
                               fontSize: 11,
                               textAlign: "center",
