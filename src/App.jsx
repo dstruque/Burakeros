@@ -236,7 +236,6 @@ function calcSubScore(sub, teamKey) {
     total = -Math.abs(total);
   }
 
-
   if (noMuerto) total -= 300;
 
   return total;
@@ -664,6 +663,252 @@ function WinningBanner({ ranking, heartFaces }) {
           </span>
         </>
       )}
+    </div>
+  );
+}
+
+function getHistoricalTargetOptions(history) {
+  const targets = new Set([3000]);
+
+  history.forEach((game) => {
+    const target = Number(game.roundTarget || 3000);
+    if (Number.isFinite(target) && target > 0) targets.add(target);
+  });
+
+  return Array.from(targets).sort((a, b) => a - b);
+}
+
+function getHistoricalRanking(history, target) {
+  const aggregates = new Map();
+
+  history
+    .filter((game) => Number(game.roundTarget || 3000) === Number(target))
+    .forEach((game) => {
+      (game.ranking || []).forEach((player) => {
+        const displayName = (player.name || "").trim();
+        const key = normalizeName(displayName);
+
+        if (!key) return;
+
+        const current = aggregates.get(key) || {
+          key,
+          name: displayName,
+          totalPoints: 0,
+          gamesPlayed: 0,
+        };
+
+        current.name = displayName || current.name;
+        current.totalPoints += Number(player.score) || 0;
+        current.gamesPlayed += 1;
+
+        aggregates.set(key, current);
+      });
+    });
+
+  return Array.from(aggregates.values())
+    .map((player) => ({
+      ...player,
+      averagePoints:
+        player.gamesPlayed > 0
+          ? player.totalPoints / player.gamesPlayed
+          : 0,
+    }))
+    .sort((a, b) => {
+      if (b.averagePoints !== a.averagePoints) {
+        return b.averagePoints - a.averagePoints;
+      }
+
+      if (b.gamesPlayed !== a.gamesPlayed) {
+        return b.gamesPlayed - a.gamesPlayed;
+      }
+
+      return a.name.localeCompare(b.name, "es");
+    });
+}
+
+function formatAveragePoints(value) {
+  return Number(value || 0).toLocaleString("es", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 0,
+  });
+}
+
+function HistoricalRankingRows({ ranking, limit = null }) {
+  const rows = limit ? ranking.slice(0, limit) : ranking;
+
+  return (
+    <>
+      {rows.map((player, index) => (
+        <div
+          key={player.key}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 0",
+            borderBottom:
+              index < rows.length - 1
+                ? "1px solid rgba(232,220,200,0.08)"
+                : "none",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              minWidth: 0,
+            }}
+          >
+            <span
+              style={{
+                width: 28,
+                color:
+                  index === 0
+                    ? "#d4b85e"
+                    : index === 1
+                    ? "#94a3b8"
+                    : index === 2
+                    ? "#b45309"
+                    : "#8a9a8c",
+                fontFamily: "'Playfair Display', serif",
+                fontSize: 20,
+                fontWeight: 900,
+                flexShrink: 0,
+              }}
+            >
+              {index + 1}
+            </span>
+
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  color: "#e8dcc8",
+                  fontWeight: 700,
+                  fontSize: 15,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {player.name}
+              </div>
+              <div
+                style={{
+                  color: "#8a9a8c",
+                  fontSize: 12,
+                  marginTop: 2,
+                }}
+              >
+                {player.gamesPlayed} partida
+                {player.gamesPlayed !== 1 ? "s" : ""}
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              textAlign: "right",
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                color: "#4ade80",
+                fontFamily: "'Playfair Display', serif",
+                fontWeight: 900,
+                fontSize: 18,
+              }}
+            >
+              {formatAveragePoints(player.averagePoints)}
+            </div>
+            <div
+              style={{
+                color: "#8a9a8c",
+                fontSize: 11,
+                marginTop: 1,
+              }}
+            >
+              pts promedio
+            </div>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function HistoricalRankingImageCard({ ranking, target }) {
+  return (
+    <div
+      style={{
+        width: 460,
+        boxSizing: "border-box",
+        background: bg,
+        padding: 22,
+        fontFamily: "'DM Sans', sans-serif",
+        color: "#e8dcc8",
+      }}
+    >
+      <div style={{ textAlign: "center", marginBottom: 18 }}>
+        <div style={{ fontSize: 24, marginBottom: 6 }}>♠ ♥ ♦ ♣</div>
+        <h2
+          style={{
+            fontFamily: "'Playfair Display', serif",
+            fontSize: 30,
+            margin: 0,
+            fontWeight: 900,
+            color: "#e8dcc8",
+          }}
+        >
+          Ranking Histórico
+        </h2>
+        <div
+          style={{
+            color: "#c4b89a",
+            fontSize: 14,
+            marginTop: 6,
+          }}
+        >
+          Burakeros · partidas a {target} puntos
+        </div>
+      </div>
+
+      <div
+        style={{
+          background: "rgba(232,220,200,0.06)",
+          borderRadius: 18,
+          padding: 16,
+          border: "1px solid rgba(232,220,200,0.12)",
+        }}
+      >
+        {ranking.length === 0 ? (
+          <div
+            style={{
+              padding: "24px 10px",
+              textAlign: "center",
+              color: "#8a9a8c",
+              fontSize: 14,
+            }}
+          >
+            No hay partidas guardadas con este puntaje.
+          </div>
+        ) : (
+          <HistoricalRankingRows ranking={ranking} limit={6} />
+        )}
+      </div>
+
+      <div
+        style={{
+          textAlign: "center",
+          color: "#666",
+          fontSize: 11,
+          marginTop: 14,
+        }}
+      >
+        Top 6 por puntos promedio
+      </div>
     </div>
   );
 }
@@ -1172,6 +1417,7 @@ export default function BurakerosApp() {
 
   const [history, setHistory] = useState([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historicalTarget, setHistoricalTarget] = useState(3000);
 
   const [gameSaved, setGameSaved] = useState(false);
   const [hasActiveGame, setHasActiveGame] = useState(false);
@@ -1185,6 +1431,7 @@ export default function BurakerosApp() {
   const [sharingImage, setSharingImage] = useState(false);
 
   const shareResultRef = useRef(null);
+  const historicalRankingImageRef = useRef(null);
 
   useEffect(() => {
     const h = loadHistory();
@@ -1224,6 +1471,24 @@ export default function BurakerosApp() {
         }))
         .sort((a, b) => b.score - a.score),
     [cumulativeScores, players]
+  );
+
+  const historicalTargetOptions = useMemo(
+    () => getHistoricalTargetOptions(history),
+    [history]
+  );
+
+  const historicalRanking = useMemo(
+    () => getHistoricalRanking(history, historicalTarget),
+    [history, historicalTarget]
+  );
+
+  const filteredHistoricalGamesCount = useMemo(
+    () =>
+      history.filter(
+        (game) => Number(game.roundTarget || 3000) === Number(historicalTarget)
+      ).length,
+    [history, historicalTarget]
   );
 
   const allFinished = [0, 1, 2].every(isRoundFinished);
@@ -1340,6 +1605,31 @@ export default function BurakerosApp() {
 
     setSharingImage(false);
   }, [sharingImage]);
+
+  const handleDownloadHistoricalRanking = useCallback(async () => {
+    if (!historicalRankingImageRef.current) return;
+
+    try {
+      await document.fonts.ready;
+
+      const blob = await toBlob(historicalRankingImageRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#0d1b0e",
+      });
+
+      if (!blob) return;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ranking-historico-burakeros-${historicalTarget}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [historicalTarget]);
 
   const openHistoryFromSetup = () => {
     setHistoryReturnScreen("setup");
@@ -1470,11 +1760,12 @@ export default function BurakerosApp() {
         updated[editingRound] = [...updated[editingRound], newSub];
       }
 
-      // If editing un-finishes this round, clear later rounds
       const totals = getRoundTotals(updated);
+
       for (let i = editingRound; i < updated.length - 1; i++) {
         const rFinished =
           totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
+
         if (!rFinished && updated[i + 1].length > 0) {
           updated[i + 1] = [];
         }
@@ -1494,11 +1785,12 @@ export default function BurakerosApp() {
       const updated = prev.map((r) => [...r]);
       updated[rIdx] = updated[rIdx].filter((_, i) => i !== sIdx);
 
-      // If deleting un-finishes this round, clear later rounds
       const totals = getRoundTotals(updated);
+
       for (let i = rIdx; i < updated.length - 1; i++) {
         const rFinished =
           totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
+
         if (!rFinished && updated[i + 1].length > 0) {
           updated[i + 1] = [];
         }
@@ -1655,6 +1947,166 @@ export default function BurakerosApp() {
           >
             Historial de Burakeros
           </h2>
+
+          <div
+            style={{
+              background: "rgba(232,220,200,0.06)",
+              borderRadius: 16,
+              padding: 16,
+              border: "1px solid rgba(232,220,200,0.12)",
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 12,
+                marginBottom: 14,
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    fontFamily: "'Playfair Display', serif",
+                    color: "#e8dcc8",
+                    fontSize: 19,
+                    margin: "0 0 4px",
+                  }}
+                >
+                  Ranking Histórico
+                </h3>
+                <div style={{ color: "#8a9a8c", fontSize: 12 }}>
+                  Puntos promedio y partidas jugadas
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDownloadHistoricalRanking}
+                disabled={historicalRanking.length === 0}
+                style={{
+                  ...btn,
+                  padding: "9px 11px",
+                  fontSize: 12,
+                  background:
+                    historicalRanking.length === 0
+                      ? "rgba(232,220,200,0.04)"
+                      : "rgba(212,184,94,0.12)",
+                  color:
+                    historicalRanking.length === 0 ? "#666" : "#d4b85e",
+                  border: `1px solid ${
+                    historicalRanking.length === 0
+                      ? "rgba(232,220,200,0.08)"
+                      : "rgba(212,184,94,0.28)"
+                  }`,
+                  cursor:
+                    historicalRanking.length === 0
+                      ? "not-allowed"
+                      : "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                📸 Descargar ranking
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "rgba(250,249,246,0.05)",
+                border: "1px solid rgba(232,220,200,0.08)",
+                marginBottom: 12,
+              }}
+            >
+              <label
+                htmlFor="historicalTarget"
+                style={{
+                  color: "#c4b89a",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                Partidas a
+              </label>
+
+              <select
+                id="historicalTarget"
+                value={historicalTarget}
+                onChange={(e) => setHistoricalTarget(Number(e.target.value))}
+                style={{
+                  minWidth: 130,
+                  background: "rgba(13,27,14,0.9)",
+                  color: "#e8dcc8",
+                  border: "1px solid rgba(232,220,200,0.2)",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontWeight: 700,
+                  outline: "none",
+                }}
+              >
+                {historicalTargetOptions.map((target) => (
+                  <option key={target} value={target}>
+                    {target} puntos
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div
+              style={{
+                color: "#8a9a8c",
+                fontSize: 12,
+                marginBottom: historicalRanking.length > 0 ? 10 : 0,
+              }}
+            >
+              {filteredHistoricalGamesCount} partida
+              {filteredHistoricalGamesCount !== 1 ? "s" : ""} considerada
+              {filteredHistoricalGamesCount !== 1 ? "s" : ""}
+            </div>
+
+            {historicalRanking.length === 0 ? (
+              <div
+                style={{
+                  textAlign: "center",
+                  color: "#8a9a8c",
+                  fontSize: 13,
+                  padding: "18px 10px",
+                  background: "rgba(232,220,200,0.04)",
+                  borderRadius: 12,
+                  border: "1px solid rgba(232,220,200,0.08)",
+                }}
+              >
+                No hay partidas guardadas con este puntaje de cierre.
+              </div>
+            ) : (
+              <HistoricalRankingRows ranking={historicalRanking} />
+            )}
+          </div>
+
+          <div
+            style={{
+              position: "fixed",
+              left: -9999,
+              top: 0,
+              width: 460,
+              pointerEvents: "none",
+            }}
+          >
+            <div ref={historicalRankingImageRef}>
+              <HistoricalRankingImageCard
+                ranking={historicalRanking}
+                target={historicalTarget}
+              />
+            </div>
+          </div>
 
           {history.length === 0 ? (
             <div
@@ -2332,194 +2784,198 @@ export default function BurakerosApp() {
         <div style={{ maxWidth: 460, margin: "0 auto" }}>
           <div ref={shareResultRef}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
-            <SuitEasterEggs
-              onDiamondClick={cycleFaces}
-              onHeartClick={toggleHeartFaces}
-              heartFaces={heartFaces}
-              compact
-            />
-
-            <div style={faceWrapStyle}>
-              <img
-                src={headerFaces.woman}
-                alt="Burakera"
-                style={gameFaceStyle}
+              <SuitEasterEggs
+                onDiamondClick={cycleFaces}
+                onHeartClick={toggleHeartFaces}
+                heartFaces={heartFaces}
+                compact
               />
 
-              <h1
+              <div style={faceWrapStyle}>
+                <img
+                  src={headerFaces.woman}
+                  alt="Burakera"
+                  style={gameFaceStyle}
+                />
+
+                <h1
+                  style={{
+                    fontFamily: "'Playfair Display', serif",
+                    fontSize: 30,
+                    fontWeight: 900,
+                    color: "#e8dcc8",
+                    margin: 0,
+                    lineHeight: 1,
+                  }}
+                >
+                  BURAKEROS
+                </h1>
+
+                <img
+                  src={headerFaces.man}
+                  alt="Burakero"
+                  style={gameFaceReverseStyle}
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                animation: "winnerPop 0.45s ease-out",
+                background:
+                  "linear-gradient(135deg, rgba(196,162,78,0.16), rgba(212,184,94,0.08))",
+                borderRadius: 18,
+                padding: 22,
+                border: "1px solid rgba(212,184,94,0.35)",
+                marginBottom: 16,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 46, marginBottom: 8 }}>🎉</div>
+
+              <h2
                 style={{
                   fontFamily: "'Playfair Display', serif",
-                  fontSize: 30,
-                  fontWeight: 900,
-                  color: "#e8dcc8",
-                  margin: 0,
-                  lineHeight: 1,
+                  color: "#d4b85e",
+                  fontSize: 28,
+                  margin: "0 0 6px",
                 }}
               >
-                BURAKEROS
-              </h1>
+                ¡{winner.name} gana!
+              </h2>
 
-              <img
-                src={headerFaces.man}
-                alt="Burakero"
-                style={gameFaceReverseStyle}
-              />
-            </div>
-          </div>
-
-          <div
-            style={{
-              animation: "winnerPop 0.45s ease-out",
-              background:
-                "linear-gradient(135deg, rgba(196,162,78,0.16), rgba(212,184,94,0.08))",
-              borderRadius: 18,
-              padding: 22,
-              border: "1px solid rgba(212,184,94,0.35)",
-              marginBottom: 16,
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: 46, marginBottom: 8 }}>🎉</div>
-
-            <h2
-              style={{
-                fontFamily: "'Playfair Display', serif",
-                color: "#d4b85e",
-                fontSize: 28,
-                margin: "0 0 6px",
-              }}
-            >
-              ¡{winner.name} gana!
-            </h2>
-
-            <p
-              style={{
-                color: "#c4b89a",
-                fontSize: 16,
-                margin: 0,
-              }}
-            >
-              {winner.score} puntos
-            </p>
-          </div>
-
-          <div
-            style={{
-              background: "rgba(232,220,200,0.06)",
-              borderRadius: 16,
-              padding: 16,
-              border: "1px solid rgba(232,220,200,0.1)",
-              marginBottom: 16,
-            }}
-          >
-            <h3
-              style={{
-                fontFamily: "'Playfair Display', serif",
-                color: "#e8dcc8",
-                fontSize: 19,
-                margin: "0 0 12px",
-              }}
-            >
-              Ranking Final
-            </h3>
-
-            {ranking.map((p, i) => (
-              <div
-                key={p.index}
+              <p
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "12px 0",
-                  borderBottom:
-                    i < ranking.length - 1
-                      ? "1px solid rgba(232,220,200,0.08)"
-                      : "none",
+                  color: "#c4b89a",
+                  fontSize: 16,
+                  margin: 0,
                 }}
               >
+                {winner.score} puntos
+              </p>
+            </div>
+
+            <div
+              style={{
+                background: "rgba(232,220,200,0.06)",
+                borderRadius: 16,
+                padding: 16,
+                border: "1px solid rgba(232,220,200,0.1)",
+                marginBottom: 16,
+              }}
+            >
+              <h3
+                style={{
+                  fontFamily: "'Playfair Display', serif",
+                  color: "#e8dcc8",
+                  fontSize: 19,
+                  margin: "0 0 12px",
+                }}
+              >
+                Ranking Final
+              </h3>
+
+              {ranking.map((p, i) => (
                 <div
+                  key={p.index}
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 10,
+                    justifyContent: "space-between",
+                    padding: "12px 0",
+                    borderBottom:
+                      i < ranking.length - 1
+                        ? "1px solid rgba(232,220,200,0.08)"
+                        : "none",
                   }}
                 >
-                  <span
-                    style={{
-                      fontFamily: "'Playfair Display', serif",
-                      fontSize: 22,
-                      fontWeight: 900,
-                      color:
-                        i === 0
-                          ? "#d4b85e"
-                          : i === 1
-                          ? "#94a3b8"
-                          : i === 2
-                          ? "#b45309"
-                          : "#777",
-                      width: 28,
-                    }}
-                  >
-                    {i + 1}
-                  </span>
-
-                  <PlayerAvatar name={p.name} heartFaces={heartFaces} size={40} />
-
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 7,
+                      gap: 10,
                     }}
                   >
                     <span
                       style={{
-                        color: "#e8dcc8",
-                        fontSize: 16,
-                        fontWeight: 700,
+                        fontFamily: "'Playfair Display', serif",
+                        fontSize: 22,
+                        fontWeight: 900,
+                        color:
+                          i === 0
+                            ? "#d4b85e"
+                            : i === 1
+                            ? "#94a3b8"
+                            : i === 2
+                            ? "#b45309"
+                            : "#777",
+                        width: 28,
                       }}
                     >
-                      {p.name}
+                      {i + 1}
                     </span>
 
-                    {i === 0 && (
-                      <span style={{ fontSize: 20 }} title="Campeón">
-                        🏆
+                    <PlayerAvatar
+                      name={p.name}
+                      heartFaces={heartFaces}
+                      size={40}
+                    />
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 7,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: "#e8dcc8",
+                          fontSize: 16,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {p.name}
                       </span>
-                    )}
+
+                      {i === 0 && (
+                        <span style={{ fontSize: 20 }} title="Campeón">
+                          🏆
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  <span
+                    style={{
+                      fontFamily: "'Playfair Display', serif",
+                      fontSize: 19,
+                      fontWeight: 900,
+                      color: p.score >= 0 ? "#4ade80" : "#f87171",
+                    }}
+                  >
+                    {p.score}
+                  </span>
                 </div>
+              ))}
+            </div>
 
-                <span
-                  style={{
-                    fontFamily: "'Playfair Display', serif",
-                    fontSize: 19,
-                    fontWeight: 900,
-                    color: p.score >= 0 ? "#4ade80" : "#f87171",
-                  }}
-                >
-                  {p.score}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div
-            style={{
-              background: "rgba(248,113,113,0.1)",
-              border: "1px solid rgba(248,113,113,0.22)",
-              borderRadius: 16,
-              padding: 16,
-              textAlign: "center",
-              color: "#fda4af",
-              fontFamily: "'Playfair Display', serif",
-              fontWeight: 900,
-              fontSize: 19,
-              marginBottom: 16,
-            }}
-          >
-            {lastPlace.name}, quedaste en el sótano!
-          </div>
+            <div
+              style={{
+                background: "rgba(248,113,113,0.1)",
+                border: "1px solid rgba(248,113,113,0.22)",
+                borderRadius: 16,
+                padding: 16,
+                textAlign: "center",
+                color: "#fda4af",
+                fontFamily: "'Playfair Display', serif",
+                fontWeight: 900,
+                fontSize: 19,
+                marginBottom: 16,
+              }}
+            >
+              {lastPlace.name}, quedaste en el sótano!
+            </div>
           </div>
 
           <MarioPartyChart
