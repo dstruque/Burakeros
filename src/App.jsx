@@ -31,11 +31,11 @@ const FACE_SETS = [
 const PLAYER_AVATARS = {
   fernando: {
     normal: "/hombre.png",
-    hearts: "/HombreC.png",
+    hearts: "/Hombrec.png",
   },
   lucy: {
     normal: "/mujer.png",
-    hearts: "/MujerC.png",
+    hearts: "/Mujerc.png",
   },
   audrey: {
     normal: "/Mujer2.png",
