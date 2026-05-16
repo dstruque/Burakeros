@@ -16,6 +16,9 @@ const BURACO_TYPES = [
 const FACE_LEFT = "/mujer.png";
 const FACE_RIGHT = "/hombre.png";
 
+const HISTORY_STORAGE_KEY = "burakeros-history";
+const ACTIVE_GAME_STORAGE_KEY = "burakeros-active-game";
+
 const FONT_LINK =
   "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap";
 
@@ -157,7 +160,7 @@ function getCumulativeScores(rounds, roundTotals, players) {
 
 function loadHistory() {
   try {
-    const saved = localStorage.getItem("burakeros-history");
+    const saved = localStorage.getItem(HISTORY_STORAGE_KEY);
     return saved ? JSON.parse(saved) : [];
   } catch {
     return [];
@@ -166,7 +169,32 @@ function loadHistory() {
 
 function saveHistory(history) {
   try {
-    localStorage.setItem("burakeros-history", JSON.stringify(history));
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function loadActiveGame() {
+  try {
+    const saved = localStorage.getItem(ACTIVE_GAME_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveActiveGame(game) {
+  try {
+    localStorage.setItem(ACTIVE_GAME_STORAGE_KEY, JSON.stringify(game));
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function clearActiveGame() {
+  try {
+    localStorage.removeItem(ACTIVE_GAME_STORAGE_KEY);
   } catch (e) {
     console.error(e);
   }
@@ -391,12 +419,21 @@ export default function BurakerosApp() {
 
   const [history, setHistory] = useState([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+
   const [gameSaved, setGameSaved] = useState(false);
+  const [hasActiveGame, setHasActiveGame] = useState(false);
+  const [savedGamePreview, setSavedGamePreview] = useState(null);
 
   useEffect(() => {
     const h = loadHistory();
+    const active = loadActiveGame();
+
     setHistory(h);
     setHistoryLoaded(true);
+
+    if (active) {
+      setSavedGamePreview(active);
+    }
   }, []);
 
   const roundTotals = useMemo(() => getRoundTotals(rounds), [rounds]);
@@ -441,6 +478,18 @@ export default function BurakerosApp() {
     setT2NoMuerto(false);
   };
 
+  const resetFullSetup = () => {
+    setPlayers(["", "", "", ""]);
+    setRoundTarget(3000);
+    setRounds([[], [], []]);
+    setShowRules(false);
+    setGameSaved(false);
+    setHasActiveGame(false);
+    setEditingRound(null);
+    setEditingSubIdx(null);
+    resetInputs();
+  };
+
   const openHistoryFromSetup = () => {
     setHistoryReturnScreen("setup");
     setScreen("history");
@@ -456,20 +505,62 @@ export default function BurakerosApp() {
   };
 
   const startNewGame = () => {
+    clearActiveGame();
+    setSavedGamePreview(null);
+
     setScreen("game");
     setRounds([[], [], []]);
     setShowRules(false);
     setGameSaved(false);
+    setHasActiveGame(true);
+    setEditingRound(null);
+    setEditingSubIdx(null);
     resetInputs();
   };
 
-  const returnToSetup = () => {
-    setScreen("setup");
-    setRounds([[], [], []]);
-    setShowRules(false);
+  const discardSavedGame = () => {
+    clearActiveGame();
+    setSavedGamePreview(null);
+    resetFullSetup();
+  };
+
+  const resumeSavedGame = () => {
+    if (!savedGamePreview) return;
+
+    setPlayers(savedGamePreview.players || ["", "", "", ""]);
+    setRoundTarget(savedGamePreview.roundTarget || 3000);
+    setRounds(savedGamePreview.rounds || [[], [], []]);
+    setShowRules(savedGamePreview.showRules || false);
+
+    setEditingRound(savedGamePreview.editingRound ?? null);
+    setEditingSubIdx(savedGamePreview.editingSubIdx ?? null);
+
+    setT1Pts(savedGamePreview.t1Pts || "");
+    setT2Pts(savedGamePreview.t2Pts || "");
+    setT1Buracos(savedGamePreview.t1Buracos || []);
+    setT2Buracos(savedGamePreview.t2Buracos || []);
+    setT1NoMuerto(savedGamePreview.t1NoMuerto || false);
+    setT2NoMuerto(savedGamePreview.t2NoMuerto || false);
+
     setGameSaved(false);
-    setRoundTarget(3000);
-    resetInputs();
+    setHasActiveGame(true);
+    setScreen("game");
+  };
+
+  const returnToSetup = () => {
+    const hasProgress = rounds.some((round) => round.length > 0);
+
+    if (
+      hasProgress &&
+      !confirm("¿Empezar un juego nuevo? Se perderá la partida actual.")
+    ) {
+      return;
+    }
+
+    clearActiveGame();
+    setSavedGamePreview(null);
+    resetFullSetup();
+    setScreen("setup");
   };
 
   const openSubRoundEntry = (rIdx, subIdx = null) => {
@@ -525,6 +616,43 @@ export default function BurakerosApp() {
   };
 
   useEffect(() => {
+    if (hasActiveGame && !allFinished) {
+      const activeGame = {
+        players,
+        roundTarget,
+        rounds,
+        showRules,
+        editingRound,
+        editingSubIdx,
+        t1Pts,
+        t2Pts,
+        t1Buracos,
+        t2Buracos,
+        t1NoMuerto,
+        t2NoMuerto,
+        savedAt: new Date().toISOString(),
+      };
+
+      saveActiveGame(activeGame);
+    }
+  }, [
+    hasActiveGame,
+    allFinished,
+    players,
+    roundTarget,
+    rounds,
+    showRules,
+    editingRound,
+    editingSubIdx,
+    t1Pts,
+    t2Pts,
+    t1Buracos,
+    t2Buracos,
+    t1NoMuerto,
+    t2NoMuerto,
+  ]);
+
+  useEffect(() => {
     if (
       allFinished &&
       !gameSaved &&
@@ -558,6 +686,9 @@ export default function BurakerosApp() {
       setHistory(newHistory);
       saveHistory(newHistory);
       setGameSaved(true);
+      setHasActiveGame(false);
+      setSavedGamePreview(null);
+      clearActiveGame();
     }
   }, [
     allFinished,
@@ -785,7 +916,7 @@ export default function BurakerosApp() {
               onClick={() => {
                 if (confirm("¿Borrar todo el historial?")) {
                   setHistory([]);
-                  localStorage.removeItem("burakeros-history");
+                  localStorage.removeItem(HISTORY_STORAGE_KEY);
                 }
               }}
               style={{
@@ -863,6 +994,77 @@ export default function BurakerosApp() {
               Planilla de Puntuación
             </p>
           </div>
+
+          {savedGamePreview && (
+            <div
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(196,162,78,0.14), rgba(212,184,94,0.08))",
+                borderRadius: 16,
+                padding: 18,
+                border: "1px solid rgba(212,184,94,0.32)",
+                marginBottom: 14,
+              }}
+            >
+              <div
+                style={{
+                  color: "#d4b85e",
+                  fontFamily: "'Playfair Display', serif",
+                  fontSize: 18,
+                  fontWeight: 900,
+                  marginBottom: 6,
+                }}
+              >
+                Partida en progreso
+              </div>
+
+              <div
+                style={{
+                  color: "#c4b89a",
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                  marginBottom: 14,
+                }}
+              >
+                {savedGamePreview.players?.filter(Boolean).join(" · ")}
+                <br />
+                Rondas a {savedGamePreview.roundTarget || 3000} puntos
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={resumeSavedGame}
+                  style={{
+                    ...btn,
+                    flex: 1,
+                    padding: "12px 10px",
+                    fontSize: 14,
+                    background: gold,
+                    color: "#1a1a2e",
+                  }}
+                >
+                  Reanudar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={discardSavedGame}
+                  style={{
+                    ...btn,
+                    flex: 1,
+                    padding: "12px 10px",
+                    fontSize: 14,
+                    background: "rgba(248,113,113,0.1)",
+                    color: "#f87171",
+                    border: "1px solid rgba(248,113,113,0.2)",
+                  }}
+                >
+                  Nueva partida
+                </button>
+              </div>
+            </div>
+          )}
 
           <div
             style={{
@@ -1784,4 +1986,3 @@ export default function BurakerosApp() {
     </div>
   );
 }
-
