@@ -20,11 +20,11 @@ const FACE_SETS = [
   },
   {
     normal: { woman: "/mujer2.png", man: "/hombre2.png" },
-    hearts: { woman: "/mujer2c.png", man: "/Hombre2c.png" },
+    hearts: { woman: "/mujerc2.png", man: "/Hombrec2.png" },
   },
   {
     normal: { woman: "/mujer3.png", man: "/hombre3.png" },
-    hearts: { woman: "/mujer3c.png", man: "/Hombre3c.png" },
+    hearts: { woman: "/mujerc3.png", man: "/Hombrec3.png" },
   },
 ];
 
