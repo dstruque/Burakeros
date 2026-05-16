@@ -49,7 +49,7 @@ const PLAYER_AVATARS = {
     normal: "/hombre3.png",
     hearts: "/Hombre3c.png",
   },
-  ivette: {
+  ivetty: {
     normal: "/mujer3.png",
     hearts: "/mujer3c.png",
   },
