@@ -18,6 +18,7 @@ const FACE_RIGHT = "/hombre.png";
 
 const HISTORY_STORAGE_KEY = "burakeros-history";
 const ACTIVE_GAME_STORAGE_KEY = "burakeros-active-game";
+const LAST_PLAYERS_STORAGE_KEY = "burakeros-last-players";
 
 const FONT_LINK =
   "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap";
@@ -105,10 +106,39 @@ function AppStyles() {
   );
 }
 
+function createGameId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getEndTypeInfo(endType) {
+  if (endType === "team1_closed") {
+    return { team: "team1", type: "closed" };
+  }
+
+  if (endType === "team2_closed") {
+    return { team: "team2", type: "closed" };
+  }
+
+  if (endType === "team1_joker") {
+    return { team: "team1", type: "joker" };
+  }
+
+  if (endType === "team2_joker") {
+    return { team: "team2", type: "joker" };
+  }
+
+  return { team: null, type: null };
+}
+
 function calcSubScore(sub, teamKey) {
   const score = sub[teamKey + "Score"] || 0;
   const buracos = sub[teamKey + "Buracos"] || [];
   const noMuerto = sub[teamKey + "NoMuerto"] || false;
+  const { team: endingTeam, type: endingType } = getEndTypeInfo(sub.endType);
 
   let buracoPts = 0;
 
@@ -119,7 +149,16 @@ function calcSubScore(sub, teamKey) {
 
   let total = score + buracoPts;
 
-  if (buracos.length === 0) total = -Math.abs(total);
+  if (endingType === "closed" && endingTeam === teamKey) {
+    total += 200;
+  }
+
+  if (endingType === "joker" && endingTeam === teamKey) {
+    total = -Math.abs(total);
+  } else if (endingType !== "joker" && buracos.length === 0) {
+    total = -Math.abs(total);
+  }
+
   if (noMuerto) total -= 300;
 
   return total;
@@ -156,6 +195,18 @@ function getCumulativeScores(rounds, roundTotals, players) {
   });
 
   return cs;
+}
+
+function getRoundWinner(totals, roundTarget) {
+  const t1Reached = totals.t1 >= roundTarget;
+  const t2Reached = totals.t2 >= roundTarget;
+
+  if (!t1Reached && !t2Reached) return null;
+
+  if (totals.t1 > totals.t2) return "team1";
+  if (totals.t2 > totals.t1) return "team2";
+
+  return "tie";
 }
 
 function loadHistory() {
@@ -195,6 +246,23 @@ function saveActiveGame(game) {
 function clearActiveGame() {
   try {
     localStorage.removeItem(ACTIVE_GAME_STORAGE_KEY);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function loadLastPlayers() {
+  try {
+    const saved = localStorage.getItem(LAST_PLAYERS_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLastPlayers(players) {
+  try {
+    localStorage.setItem(LAST_PLAYERS_STORAGE_KEY, JSON.stringify(players));
   } catch (e) {
     console.error(e);
   }
@@ -292,7 +360,7 @@ function BuracoSelector({ buracos, onAdd, onRemove }) {
             border: "1px solid rgba(248,113,113,0.2)",
           }}
         >
-          ⚠ Sin buraco = puntos en negativo
+          ⚠ Sin buraco puede quedar negativo
         </div>
       )}
     </div>
@@ -397,6 +465,109 @@ function TeamEntryPanel({
   );
 }
 
+function EndTypeSelector({
+  pair1Name,
+  pair2Name,
+  endType,
+  onChange,
+}) {
+  const options = [
+    {
+      key: "team1_closed",
+      label: `${pair1Name} cerró`,
+      detail: "+200",
+      color: "#4ade80",
+    },
+    {
+      key: "team2_closed",
+      label: `${pair2Name} cerró`,
+      detail: "+200",
+      color: "#4ade80",
+    },
+    {
+      key: "team1_joker",
+      label: `${pair1Name} botó comodín`,
+      detail: "Ese equipo va negativo",
+      color: "#f87171",
+    },
+    {
+      key: "team2_joker",
+      label: `${pair2Name} botó comodín`,
+      detail: "Ese equipo va negativo",
+      color: "#f87171",
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        background: "rgba(232,220,200,0.06)",
+        borderRadius: 14,
+        padding: 18,
+        border: "1px solid rgba(232,220,200,0.12)",
+        marginBottom: 14,
+      }}
+    >
+      <p
+        style={{
+          color: "#c4b89a",
+          fontSize: 13,
+          fontWeight: 700,
+          margin: "0 0 10px",
+          textTransform: "uppercase",
+          letterSpacing: 1,
+        }}
+      >
+        ¿Cómo terminó la sub-ronda?
+      </p>
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {options.map((option) => {
+          const selected = endType === option.key;
+
+          return (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => onChange(option.key)}
+              style={{
+                ...btn,
+                width: "100%",
+                padding: "12px 14px",
+                textAlign: "left",
+                borderRadius: 12,
+                background: selected
+                  ? option.color + "22"
+                  : "rgba(232,220,200,0.04)",
+                color: selected ? option.color : "#c4b89a",
+                border: `2px solid ${
+                  selected ? option.color + "88" : "rgba(232,220,200,0.1)"
+                }`,
+              }}
+            >
+              <div style={{ fontSize: 14 }}>
+                {selected ? "✓ " : "○ "}
+                {option.label}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  opacity: 0.8,
+                  marginTop: 3,
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontWeight: 500,
+                }}
+              >
+                {option.detail}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function BurakerosApp() {
   const [screen, setScreen] = useState("setup");
   const [historyReturnScreen, setHistoryReturnScreen] = useState("setup");
@@ -416,6 +587,7 @@ export default function BurakerosApp() {
   const [t2Buracos, setT2Buracos] = useState([]);
   const [t1NoMuerto, setT1NoMuerto] = useState(false);
   const [t2NoMuerto, setT2NoMuerto] = useState(false);
+  const [subEndType, setSubEndType] = useState(null);
 
   const [history, setHistory] = useState([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -424,12 +596,17 @@ export default function BurakerosApp() {
   const [hasActiveGame, setHasActiveGame] = useState(false);
   const [savedGamePreview, setSavedGamePreview] = useState(null);
 
+  const [lastPlayers, setLastPlayers] = useState([]);
+  const [gameId, setGameId] = useState(null);
+
   useEffect(() => {
     const h = loadHistory();
     const active = loadActiveGame();
+    const savedPlayers = loadLastPlayers();
 
     setHistory(h);
     setHistoryLoaded(true);
+    setLastPlayers(savedPlayers);
 
     if (active) {
       setSavedGamePreview(active);
@@ -476,6 +653,7 @@ export default function BurakerosApp() {
     setT2Buracos([]);
     setT1NoMuerto(false);
     setT2NoMuerto(false);
+    setSubEndType(null);
   };
 
   const resetFullSetup = () => {
@@ -487,6 +665,7 @@ export default function BurakerosApp() {
     setHasActiveGame(false);
     setEditingRound(null);
     setEditingSubIdx(null);
+    setGameId(null);
     resetInputs();
   };
 
@@ -505,9 +684,15 @@ export default function BurakerosApp() {
   };
 
   const startNewGame = () => {
+    const newGameId = createGameId();
+
     clearActiveGame();
     setSavedGamePreview(null);
 
+    saveLastPlayers(players);
+    setLastPlayers(players);
+
+    setGameId(newGameId);
     setScreen("game");
     setRounds([[], [], []]);
     setShowRules(false);
@@ -541,7 +726,9 @@ export default function BurakerosApp() {
     setT2Buracos(savedGamePreview.t2Buracos || []);
     setT1NoMuerto(savedGamePreview.t1NoMuerto || false);
     setT2NoMuerto(savedGamePreview.t2NoMuerto || false);
+    setSubEndType(savedGamePreview.subEndType || null);
 
+    setGameId(savedGamePreview.gameId || createGameId());
     setGameSaved(false);
     setHasActiveGame(true);
     setScreen("game");
@@ -576,12 +763,15 @@ export default function BurakerosApp() {
       setT2Buracos([...(s.team2Buracos || [])]);
       setT1NoMuerto(s.team1NoMuerto || false);
       setT2NoMuerto(s.team2NoMuerto || false);
+      setSubEndType(s.endType || null);
     } else {
       resetInputs();
     }
   };
 
   const saveSubRound = () => {
+    if (!subEndType) return;
+
     const newSub = {
       team1Score: parseInt(t1Pts, 10) || 0,
       team2Score: parseInt(t2Pts, 10) || 0,
@@ -589,6 +779,7 @@ export default function BurakerosApp() {
       team2Buracos: [...t2Buracos],
       team1NoMuerto: t1NoMuerto,
       team2NoMuerto: t2NoMuerto,
+      endType: subEndType,
     };
 
     setRounds((prev) => {
@@ -608,6 +799,8 @@ export default function BurakerosApp() {
   };
 
   const deleteSubRound = (rIdx, sIdx) => {
+    if (!confirm("¿Eliminar esta sub-ronda?")) return;
+
     setRounds((prev) => {
       const updated = prev.map((r) => [...r]);
       updated[rIdx] = updated[rIdx].filter((_, i) => i !== sIdx);
@@ -618,6 +811,7 @@ export default function BurakerosApp() {
   useEffect(() => {
     if (hasActiveGame && !allFinished) {
       const activeGame = {
+        gameId,
         players,
         roundTarget,
         rounds,
@@ -630,6 +824,7 @@ export default function BurakerosApp() {
         t2Buracos,
         t1NoMuerto,
         t2NoMuerto,
+        subEndType,
         savedAt: new Date().toISOString(),
       };
 
@@ -638,6 +833,7 @@ export default function BurakerosApp() {
   }, [
     hasActiveGame,
     allFinished,
+    gameId,
     players,
     roundTarget,
     rounds,
@@ -650,6 +846,7 @@ export default function BurakerosApp() {
     t2Buracos,
     t1NoMuerto,
     t2NoMuerto,
+    subEndType,
   ]);
 
   useEffect(() => {
@@ -659,6 +856,16 @@ export default function BurakerosApp() {
       players.every((p) => p.trim()) &&
       historyLoaded
     ) {
+      const alreadySaved = history.some((h) => h.gameId && h.gameId === gameId);
+
+      if (alreadySaved) {
+        setGameSaved(true);
+        setHasActiveGame(false);
+        setSavedGamePreview(null);
+        clearActiveGame();
+        return;
+      }
+
       const rt = getRoundTotals(rounds);
       const cs = getCumulativeScores(rounds, rt, players);
 
@@ -670,6 +877,7 @@ export default function BurakerosApp() {
         .sort((a, b) => b.score - a.score);
 
       const entry = {
+        gameId,
         date: new Date().toISOString(),
         players: [...players],
         roundTarget,
@@ -698,6 +906,7 @@ export default function BurakerosApp() {
     history,
     historyLoaded,
     roundTarget,
+    gameId,
   ]);
 
   if (screen === "history") {
@@ -763,6 +972,11 @@ export default function BurakerosApp() {
                 year: "numeric",
               });
 
+              const timeStr = d.toLocaleTimeString("es", {
+                hour: "numeric",
+                minute: "2-digit",
+              });
+
               return (
                 <div
                   key={`${game.date}-${gIdx}`}
@@ -784,7 +998,7 @@ export default function BurakerosApp() {
                   >
                     <div>
                       <div style={{ color: "#8a9a8c", fontSize: 12 }}>
-                        {dateStr}
+                        {dateStr} · {timeStr}
                       </div>
                       <div
                         style={{
@@ -940,6 +1154,8 @@ export default function BurakerosApp() {
 
   if (screen === "setup") {
     const allFilled = players.every((p) => p.trim());
+    const canUseLastPlayers =
+      lastPlayers.length === 4 && lastPlayers.every((p) => p.trim());
 
     return (
       <div
@@ -1083,6 +1299,27 @@ export default function BurakerosApp() {
             >
               Ingresá los 4 jugadores:
             </p>
+
+            {canUseLastPlayers && (
+              <button
+                type="button"
+                onClick={() => setPlayers(lastPlayers)}
+                style={{
+                  ...btn,
+                  width: "100%",
+                  marginBottom: 14,
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  background: "rgba(212,184,94,0.1)",
+                  color: "#d4b85e",
+                  border: "1px solid rgba(212,184,94,0.28)",
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontWeight: 700,
+                }}
+              >
+                Usar últimos jugadores: {lastPlayers.join(" · ")}
+              </button>
+            )}
 
             {players.map((p, i) => (
               <input
@@ -1323,6 +1560,13 @@ export default function BurakerosApp() {
             onToggleNoMuerto={() => setT2NoMuerto((v) => !v)}
           />
 
+          <EndTypeSelector
+            pair1Name={pair1Name}
+            pair2Name={pair2Name}
+            endType={subEndType}
+            onChange={setSubEndType}
+          />
+
           <button
             type="button"
             onClick={saveSubRound}
@@ -1331,14 +1575,28 @@ export default function BurakerosApp() {
               width: "100%",
               padding: "14px 0",
               fontSize: 17,
-              background: gold,
-              color: "#1a1a2e",
+              background: subEndType ? gold : "#3a3a3a",
+              color: subEndType ? "#1a1a2e" : "#777",
               letterSpacing: 1,
               marginTop: 4,
+              cursor: subEndType ? "pointer" : "not-allowed",
             }}
           >
             {isEditing ? "GUARDAR CAMBIOS" : "GUARDAR SUB-RONDA"}
           </button>
+
+          {!subEndType && (
+            <div
+              style={{
+                color: "#f87171",
+                fontSize: 12,
+                textAlign: "center",
+                marginTop: 10,
+              }}
+            >
+              Elige cómo terminó la sub-ronda para poder guardarla.
+            </div>
+          )}
 
           {isEditing && (
             <button
@@ -1491,11 +1749,13 @@ export default function BurakerosApp() {
             <br />
             Buraco As Limpio: 800 · As Sucio: 500
             <br />
-            Cerrar ronda: +200 · No robó muerto: −300
+            Cerrar: +200 · No robó muerto: −300
             <br />
-            Sin buraco al cierre rival: todo negativo
+            Si el rival cierra y no tienes buraco: todo negativo
             <br />
-            Botar comodín: todo negativo · Meta: {roundTarget} pts
+            Si botas comodín: tu equipo va negativo
+            <br />
+            Si el rival bota comodín: tú no recibes penalización por no tener buraco
           </div>
         )}
 
@@ -1632,6 +1892,7 @@ export default function BurakerosApp() {
           const finished = isRoundFinished(rIdx);
           const isActive = rIdx === activeRound;
           const unlocked = rIdx === 0 || isRoundFinished(rIdx - 1);
+          const roundWinner = getRoundWinner(totals, roundTarget);
 
           return (
             <div
@@ -1786,14 +2047,29 @@ export default function BurakerosApp() {
                     const s2 = calcSubScore(s, "team2");
                     const b1 = (s.team1Buracos || []).length;
                     const b2 = (s.team2Buracos || []).length;
+                    const endInfo = getEndTypeInfo(s.endType);
+
+                    let endText = "";
+
+                    if (endInfo.type === "closed") {
+                      endText =
+                        endInfo.team === "team1"
+                          ? `Cerró ${pair1Name}`
+                          : `Cerró ${pair2Name}`;
+                    }
+
+                    if (endInfo.type === "joker") {
+                      endText =
+                        endInfo.team === "team1"
+                          ? `${pair1Name} botó comodín`
+                          : `${pair2Name} botó comodín`;
+                    }
 
                     return (
                       <div
                         key={sIdx}
                         onClick={() => openSubRoundEntry(rIdx, sIdx)}
                         style={{
-                          display: "flex",
-                          alignItems: "center",
                           padding: "8px 4px",
                           borderBottom:
                             sIdx < subs.length - 1
@@ -1803,109 +2079,133 @@ export default function BurakerosApp() {
                           borderRadius: 6,
                         }}
                       >
-                        <span
-                          style={{
-                            color: "#8a9a8c",
-                            fontSize: 12,
-                            width: 28,
-                          }}
-                        >
-                          #{sIdx + 1}
-                        </span>
-
                         <div
                           style={{
                             display: "flex",
-                            gap: 14,
-                            flex: 1,
-                            justifyContent: "center",
                             alignItems: "center",
                           }}
                         >
-                          <div style={{ textAlign: "center" }}>
-                            <span
-                              style={{
-                                color: s1 >= 0 ? "#a8b0a8" : "#f87171",
-                                fontSize: 14,
-                                fontWeight: 600,
-                                fontFamily: "'Playfair Display', serif",
-                              }}
-                            >
-                              {s1}
-                            </span>
-
-                            {b1 > 0 ? (
-                              <div
-                                style={{
-                                  fontSize: 10,
-                                  color: "#22c55e",
-                                  marginTop: 1,
-                                }}
-                              >
-                                {b1} buraco{b1 > 1 ? "s" : ""}
-                              </div>
-                            ) : (
-                              <div
-                                style={{
-                                  fontSize: 10,
-                                  color: "#f87171",
-                                  marginTop: 1,
-                                }}
-                              >
-                                sin buraco
-                              </div>
-                            )}
-                          </div>
-
-                          <span style={{ color: "#555", fontSize: 12 }}>
-                            vs
+                          <span
+                            style={{
+                              color: "#8a9a8c",
+                              fontSize: 12,
+                              width: 28,
+                            }}
+                          >
+                            #{sIdx + 1}
                           </span>
 
-                          <div style={{ textAlign: "center" }}>
-                            <span
-                              style={{
-                                color: s2 >= 0 ? "#a8b0a8" : "#f87171",
-                                fontSize: 14,
-                                fontWeight: 600,
-                                fontFamily: "'Playfair Display', serif",
-                              }}
-                            >
-                              {s2}
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 14,
+                              flex: 1,
+                              justifyContent: "center",
+                              alignItems: "center",
+                            }}
+                          >
+                            <div style={{ textAlign: "center" }}>
+                              <span
+                                style={{
+                                  color: s1 >= 0 ? "#a8b0a8" : "#f87171",
+                                  fontSize: 14,
+                                  fontWeight: 600,
+                                  fontFamily: "'Playfair Display', serif",
+                                }}
+                              >
+                                {s1}
+                              </span>
+
+                              {b1 > 0 ? (
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    color: "#22c55e",
+                                    marginTop: 1,
+                                  }}
+                                >
+                                  {b1} buraco{b1 > 1 ? "s" : ""}
+                                </div>
+                              ) : (
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    color: "#f87171",
+                                    marginTop: 1,
+                                  }}
+                                >
+                                  sin buraco
+                                </div>
+                              )}
+                            </div>
+
+                            <span style={{ color: "#555", fontSize: 12 }}>
+                              vs
                             </span>
 
-                            {b2 > 0 ? (
-                              <div
+                            <div style={{ textAlign: "center" }}>
+                              <span
                                 style={{
-                                  fontSize: 10,
-                                  color: "#22c55e",
-                                  marginTop: 1,
+                                  color: s2 >= 0 ? "#a8b0a8" : "#f87171",
+                                  fontSize: 14,
+                                  fontWeight: 600,
+                                  fontFamily: "'Playfair Display', serif",
                                 }}
                               >
-                                {b2} buraco{b2 > 1 ? "s" : ""}
-                              </div>
-                            ) : (
-                              <div
-                                style={{
-                                  fontSize: 10,
-                                  color: "#f87171",
-                                  marginTop: 1,
-                                }}
-                              >
-                                sin buraco
-                              </div>
-                            )}
+                                {s2}
+                              </span>
+
+                              {b2 > 0 ? (
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    color: "#22c55e",
+                                    marginTop: 1,
+                                  }}
+                                >
+                                  {b2} buraco{b2 > 1 ? "s" : ""}
+                                </div>
+                              ) : (
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    color: "#f87171",
+                                    marginTop: 1,
+                                  }}
+                                >
+                                  sin buraco
+                                </div>
+                              )}
+                            </div>
                           </div>
+
+                          <span
+                            style={{
+                              color: "#c4b89a",
+                              fontSize: 13,
+                              opacity: 0.5,
+                            }}
+                          >
+                            ✎
+                          </span>
                         </div>
 
-                        <span
-                          style={{
-                            color: "#c4b89a",
-                            fontSize: 13,
-                            opacity: 0.5,
-                          }}
-                        >
-                          ✎
-                        </span>
+                        {endText && (
+                          <div
+                            style={{
+                              color:
+                                endInfo.type === "joker"
+                                  ? "#f87171"
+                                  : "#d4b85e",
+                              fontSize: 11,
+                              textAlign: "center",
+                              marginTop: 5,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {endText}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1975,8 +2275,18 @@ export default function BurakerosApp() {
                     marginTop: 4,
                   }}
                 >
-                  {totals.t1 >= roundTarget ? pair1Name : pair2Name} ganó en{" "}
-                  {subs.length} sub-ronda{subs.length !== 1 ? "s" : ""}
+                  {roundWinner === "team1" &&
+                    `${pair1Name} ganó en ${subs.length} sub-ronda${
+                      subs.length !== 1 ? "s" : ""
+                    }`}
+                  {roundWinner === "team2" &&
+                    `${pair2Name} ganó en ${subs.length} sub-ronda${
+                      subs.length !== 1 ? "s" : ""
+                    }`}
+                  {roundWinner === "tie" &&
+                    `Empate en la ronda tras ${subs.length} sub-ronda${
+                      subs.length !== 1 ? "s" : ""
+                    }`}
                 </div>
               )}
             </div>
