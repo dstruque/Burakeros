@@ -16,7 +16,7 @@ const BURACO_TYPES = [
 const FACE_SETS = [
   {
     normal: { woman: "/mujer.png", man: "/hombre.png" },
-    hearts: { woman: "/MujerC.png", man: "/HombreC.png" },
+    hearts: { woman: "/Mujerc.png", man: "/Hombrec.png" },
   },
   {
     normal: { woman: "/Mujer2.png", man: "/Hombre2.png" },
