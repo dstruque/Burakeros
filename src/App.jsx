@@ -1,11 +1,4 @@
-
-import {
-  useState,
-  useMemo,
-  useEffect,
-  useRef,
-  useCallback,
-} from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { toBlob } from "html-to-image";
 
 const ROTATIONS = [
@@ -243,9 +236,8 @@ function calcSubScore(sub, teamKey) {
     total = -Math.abs(total);
   }
 
-  if (noMuerto) {
-    total -= 300;
-  }
+
+  if (noMuerto) total -= 300;
 
   return total;
 }
@@ -297,11 +289,6 @@ function getRoundWinner(totals, roundTarget) {
 
 function getProgressiveRankings(rounds, roundTotals, players) {
   const checkpoints = [];
-
-  checkpoints.push(
-    players.map((_, i) => ({ index: i, score: 0, position: 1 }))
-  );
-
   const cumulative = players.map(() => 0);
 
   for (let rIdx = 0; rIdx < rounds.length; rIdx++) {
@@ -396,13 +383,13 @@ function MarioPartyChart({ players, checkpoints, heartFaces }) {
     [checkpoints, players]
   );
 
-  const getX = (cpIdx) => chartLeft + (cpIdx / 3) * chartW;
+  const getX = (cpIdx) => chartLeft + (cpIdx / 2) * chartW;
   const getY = (pos) => chartTop + ((pos - 1) / 3) * chartH;
 
-  const labels = ["Inicio", "R1", "R2", "R3"];
+  const labels = ["R1", "R2", "R3"];
 
-  const winnerIdx = checkpoints[3]
-    ? checkpoints[3].find((e) => e.position === 1)?.index
+  const winnerIdx = checkpoints[2]
+    ? checkpoints[2].find((e) => e.position === 1)?.index
     : null;
 
   return (
@@ -471,7 +458,7 @@ function MarioPartyChart({ players, checkpoints, heartFaces }) {
           </g>
         ))}
 
-        {[0, 1, 2, 3].map((i) => (
+        {[0, 1, 2].map((i) => (
           <line
             key={`v${i}`}
             x1={getX(i)}
@@ -486,7 +473,6 @@ function MarioPartyChart({ players, checkpoints, heartFaces }) {
 
         {playerPaths.map((path, pIdx) => {
           const color = PLAYER_COLORS[pIdx];
-
           const pts = path.map((p, i) => ({
             x: getX(i) + (tieOffsets[i]?.[pIdx] || 0),
             y: getY(p.position),
@@ -574,7 +560,7 @@ function MarioPartyChart({ players, checkpoints, heartFaces }) {
                   </>
                 )}
 
-                {cpIdx === 3 && isWinner && (
+                {cpIdx === 2 && isWinner && (
                   <text
                     x={x}
                     y={y - markerR - 6}
@@ -1323,10 +1309,6 @@ export default function BurakerosApp() {
         cacheBust: true,
         pixelRatio: 2,
         backgroundColor: "#0d1b0e",
-        filter: (node) => {
-          if (!(node instanceof HTMLElement)) return true;
-          return node.dataset.shareExclude !== "true";
-        },
       });
 
       if (!blob) return;
@@ -1488,12 +1470,11 @@ export default function BurakerosApp() {
         updated[editingRound] = [...updated[editingRound], newSub];
       }
 
+      // If editing un-finishes this round, clear later rounds
       const totals = getRoundTotals(updated);
-
       for (let i = editingRound; i < updated.length - 1; i++) {
         const rFinished =
           totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
-
         if (!rFinished && updated[i + 1].length > 0) {
           updated[i + 1] = [];
         }
@@ -1513,12 +1494,11 @@ export default function BurakerosApp() {
       const updated = prev.map((r) => [...r]);
       updated[rIdx] = updated[rIdx].filter((_, i) => i !== sIdx);
 
+      // If deleting un-finishes this round, clear later rounds
       const totals = getRoundTotals(updated);
-
       for (let i = rIdx; i < updated.length - 1; i++) {
         const rFinished =
           totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
-
         if (!rFinished && updated[i + 1].length > 0) {
           updated[i + 1] = [];
         }
@@ -2340,7 +2320,6 @@ export default function BurakerosApp() {
 
     return (
       <div
-        ref={shareResultRef}
         style={{
           minHeight: "100vh",
           background: bg,
@@ -2351,7 +2330,8 @@ export default function BurakerosApp() {
         <AppStyles />
 
         <div style={{ maxWidth: 460, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div ref={shareResultRef}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
             <SuitEasterEggs
               onDiamondClick={cycleFaces}
               onHeartClick={toggleHeartFaces}
@@ -2483,11 +2463,7 @@ export default function BurakerosApp() {
                     {i + 1}
                   </span>
 
-                  <PlayerAvatar
-                    name={p.name}
-                    heartFaces={heartFaces}
-                    size={40}
-                  />
+                  <PlayerAvatar name={p.name} heartFaces={heartFaces} size={40} />
 
                   <div
                     style={{
@@ -2544,6 +2520,7 @@ export default function BurakerosApp() {
           >
             {lastPlace.name}, quedaste en el sótano!
           </div>
+          </div>
 
           <MarioPartyChart
             players={players}
@@ -2552,7 +2529,6 @@ export default function BurakerosApp() {
           />
 
           <button
-            data-share-exclude="true"
             type="button"
             onClick={handleShareImage}
             disabled={sharingImage}
@@ -2571,10 +2547,7 @@ export default function BurakerosApp() {
             {sharingImage ? "Generando..." : "📤 Compartir resultado"}
           </button>
 
-          <div
-            data-share-exclude="true"
-            style={{ display: "flex", gap: 10 }}
-          >
+          <div style={{ display: "flex", gap: 10 }}>
             <button
               type="button"
               onClick={returnToSetup}
