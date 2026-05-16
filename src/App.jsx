@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 
 const ROTATIONS = [
   { pair1: [0, 1], pair2: [2, 3] },
@@ -54,6 +54,8 @@ const PLAYER_AVATARS = {
     hearts: "/Mujerc3.png",
   },
 };
+
+const PLAYER_COLORS = ["#d4b85e", "#4ade80", "#60a5fa", "#f472b6"];
 
 const HISTORY_STORAGE_KEY = "burakeros-history";
 const ACTIVE_GAME_STORAGE_KEY = "burakeros-active-game";
@@ -228,6 +230,8 @@ function calcSubScore(sub, teamKey) {
     buracos.length === 0
   ) {
     total = -Math.abs(total);
+  } else if (endingType === "cards_out" && buracos.length === 0) {
+    total = -Math.abs(total);
   }
 
 
@@ -277,6 +281,555 @@ function getRoundWinner(totals, roundTarget) {
   if (totals.t2 > totals.t1) return "team2";
 
   return "tie";
+}
+
+function getProgressiveRankings(rounds, roundTotals, players) {
+  const checkpoints = [];
+
+  checkpoints.push(
+    players.map((_, i) => ({ index: i, score: 0, position: i + 1 }))
+  );
+
+  const cumulative = players.map(() => 0);
+
+  for (let rIdx = 0; rIdx < rounds.length; rIdx++) {
+    const rot = ROTATIONS[rIdx];
+    const t = roundTotals[rIdx];
+
+    rot.pair1.forEach((pi) => {
+      cumulative[pi] += t.t1;
+    });
+
+    rot.pair2.forEach((pi) => {
+      cumulative[pi] += t.t2;
+    });
+
+    const sorted = players
+      .map((_, i) => ({ index: i, score: cumulative[i] }))
+      .sort((a, b) => b.score - a.score);
+
+    let pos = 1;
+
+    sorted.forEach((p, i) => {
+      if (i > 0 && p.score === sorted[i - 1].score) {
+        p.position = sorted[i - 1].position;
+      } else {
+        p.position = pos;
+      }
+
+      pos++;
+    });
+
+    checkpoints.push(sorted);
+  }
+
+  return checkpoints;
+}
+
+function MarioPartyChart({ players, checkpoints, heartFaces }) {
+  const W = 390;
+  const H = 340;
+  const padL = 38;
+  const padR = 20;
+  const padT = 55;
+  const padB = 66;
+
+  const chartLeft = padL;
+  const chartRight = W - padR;
+  const chartTop = padT;
+  const chartBottom = H - padB;
+  const chartW = chartRight - chartLeft;
+  const chartH = chartBottom - chartTop;
+
+  const playerPaths = useMemo(
+    () =>
+      players.map((_, pIdx) =>
+        checkpoints.map((cp) => {
+          const entry = cp.find((e) => e.index === pIdx);
+          return { position: entry.position, score: entry.score };
+        })
+      ),
+    [checkpoints, players]
+  );
+
+  const getX = (cpIdx) => chartLeft + (cpIdx / 3) * chartW;
+  const getY = (pos) => chartTop + ((pos - 1) / 3) * chartH;
+
+  const markerR = 16;
+  const labels = ["Inicio", "R1", "R2", "R3"];
+
+  const winnerIdx = checkpoints[3]
+    ? checkpoints[3].find((e) => e.position === 1)?.index
+    : null;
+
+  return (
+    <div
+      style={{
+        background: "rgba(232,220,200,0.06)",
+        borderRadius: 16,
+        padding: "16px 8px 10px",
+        border: "1px solid rgba(232,220,200,0.1)",
+        marginBottom: 16,
+      }}
+    >
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: "100%", display: "block" }}
+      >
+        <text
+          x={W / 2}
+          y="24"
+          textAnchor="middle"
+          fill="#e8dcc8"
+          fontSize="17"
+          fontWeight="900"
+          fontFamily="'Playfair Display', serif"
+        >
+          Carrera de Burakeros
+        </text>
+
+        {labels.map((label, i) => (
+          <text
+            key={label}
+            x={getX(i)}
+            y={chartTop - 12}
+            textAnchor="middle"
+            fill="#c4b89a"
+            fontSize="14"
+            fontWeight="600"
+            fontFamily="'DM Sans', sans-serif"
+          >
+            {label}
+          </text>
+        ))}
+
+        {[1, 2, 3, 4].map((pos) => (
+          <g key={pos}>
+            <line
+              x1={chartLeft}
+              y1={getY(pos)}
+              x2={chartRight}
+              y2={getY(pos)}
+              stroke="rgba(232,220,200,0.07)"
+              strokeWidth="1"
+            />
+
+            <text
+              x={chartLeft - 14}
+              y={getY(pos) + 5}
+              textAnchor="middle"
+              fill="#8a9a8c"
+              fontSize="13"
+              fontFamily="'Playfair Display', serif"
+              fontWeight="700"
+            >
+              {pos}º
+            </text>
+          </g>
+        ))}
+
+        {[0, 1, 2, 3].map((i) => (
+          <line
+            key={`v${i}`}
+            x1={getX(i)}
+            y1={chartTop}
+            x2={getX(i)}
+            y2={chartBottom}
+            stroke="rgba(232,220,200,0.05)"
+            strokeWidth="1"
+            strokeDasharray="4,4"
+          />
+        ))}
+
+        {playerPaths.map((path, pIdx) => {
+          const color = PLAYER_COLORS[pIdx];
+          const pts = path.map((p, i) => ({
+            x: getX(i),
+            y: getY(p.position),
+          }));
+
+          let d = `M ${pts[0].x} ${pts[0].y}`;
+
+          for (let i = 1; i < pts.length; i++) {
+            const prev = pts[i - 1];
+            const curr = pts[i];
+            const cx = (prev.x + curr.x) / 2;
+            d += ` C ${cx} ${prev.y}, ${cx} ${curr.y}, ${curr.x} ${curr.y}`;
+          }
+
+          return (
+            <path
+              key={`line-${pIdx}`}
+              d={d}
+              fill="none"
+              stroke={color}
+              strokeWidth="3"
+              strokeLinecap="round"
+              opacity="0.6"
+            />
+          );
+        })}
+
+        {playerPaths.map((path, pIdx) => {
+          const color = PLAYER_COLORS[pIdx];
+          const name = players[pIdx];
+          const avatarSrc = getPlayerAvatar(name, heartFaces);
+          const initial = name.charAt(0).toUpperCase();
+          const isWinner = pIdx === winnerIdx;
+
+          return path.map((p, cpIdx) => {
+            const x = getX(cpIdx);
+            const y = getY(p.position);
+            const clipId = `mp-clip-${pIdx}-${cpIdx}`;
+
+            return (
+              <g key={`m-${pIdx}-${cpIdx}`}>
+                {avatarSrc ? (
+                  <>
+                    <defs>
+                      <clipPath id={clipId}>
+                        <circle cx={x} cy={y} r={markerR} />
+                      </clipPath>
+                    </defs>
+
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={markerR + 2}
+                      fill={color}
+                      opacity="0.9"
+                    />
+
+                    <image
+                      href={avatarSrc}
+                      x={x - markerR}
+                      y={y - markerR}
+                      width={markerR * 2}
+                      height={markerR * 2}
+                      clipPath={`url(#${clipId})`}
+                      preserveAspectRatio="xMidYMid slice"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <circle cx={x} cy={y} r={markerR} fill={color} />
+
+                    <text
+                      x={x}
+                      y={y + 5}
+                      textAnchor="middle"
+                      fill="#1a1a2e"
+                      fontSize="14"
+                      fontWeight="700"
+                      fontFamily="'Playfair Display', serif"
+                    >
+                      {initial}
+                    </text>
+                  </>
+                )}
+
+                {cpIdx === 3 && isWinner && (
+                  <text
+                    x={x}
+                    y={y - markerR - 6}
+                    textAnchor="middle"
+                    fontSize="20"
+                  >
+                    👑
+                  </text>
+                )}
+              </g>
+            );
+          });
+        })}
+
+        {players.map((name, i) => {
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          const legendX = chartLeft + col * (chartW / 2) + 6;
+          const legendY = chartBottom + 24 + row * 22;
+
+          return (
+            <g key={`leg-${i}`}>
+              <circle
+                cx={legendX}
+                cy={legendY - 4}
+                r="6"
+                fill={PLAYER_COLORS[i]}
+              />
+
+              <text
+                x={legendX + 12}
+                y={legendY}
+                fill="#e8dcc8"
+                fontSize="13"
+                fontWeight="600"
+                fontFamily="'DM Sans', sans-serif"
+              >
+                {name}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function WinningBanner({ ranking, heartFaces }) {
+  const hasScores = ranking.some((p) => p.score !== 0);
+
+  if (!hasScores) return null;
+
+  const leader = ranking[0];
+  const isTied =
+    ranking.length > 1 && ranking[0].score === ranking[1].score;
+
+  return (
+    <div
+      style={{
+        background:
+          "linear-gradient(135deg, rgba(196,162,78,0.12), rgba(212,184,94,0.06))",
+        borderRadius: 12,
+        padding: "10px 16px",
+        border: "1px solid rgba(212,184,94,0.2)",
+        marginBottom: 14,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+      }}
+    >
+      {isTied ? (
+        <span
+          style={{
+            color: "#c4b89a",
+            fontSize: 14,
+            fontFamily: "'DM Sans', sans-serif",
+          }}
+        >
+          ⚖️ Empate · {leader.score} pts
+        </span>
+      ) : (
+        <>
+          <span style={{ fontSize: 16 }}>👑</span>
+
+          <PlayerAvatar name={leader.name} heartFaces={heartFaces} size={28} />
+
+          <span
+            style={{
+              color: "#d4b85e",
+              fontSize: 15,
+              fontWeight: 700,
+              fontFamily: "'Playfair Display', serif",
+            }}
+          >
+            {leader.name}
+          </span>
+
+          <span style={{ color: "#c4b89a", fontSize: 13 }}>
+            lidera con {leader.score} pts
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+async function generateShareImage(
+  players,
+  ranking,
+  checkpoints,
+  roundTarget
+) {
+  await document.fonts.ready;
+
+  const W = 540;
+  const H = 780;
+  const canvas = document.createElement("canvas");
+  canvas.width = W * 2;
+  canvas.height = H * 2;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(2, 2);
+
+  const grad = ctx.createLinearGradient(0, 0, W * 0.4, H);
+  grad.addColorStop(0, "#0d1b0e");
+  grad.addColorStop(0.4, "#1a2e1c");
+  grad.addColorStop(1, "#0f1a11");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "#e8dcc8";
+  ctx.font = '900 38px "Playfair Display", Georgia, serif';
+  ctx.textAlign = "center";
+  ctx.fillText("BURAKEROS", W / 2, 52);
+
+  ctx.font = "24px serif";
+  ctx.fillText("♠ ♥ ♦ ♣", W / 2, 82);
+
+  ctx.fillStyle = "#8a9a8c";
+  ctx.font = '13px "DM Sans", sans-serif';
+
+  const now = new Date();
+
+  const dateStr = now.toLocaleDateString("es", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  ctx.fillText(
+    `${dateStr} · Rondas a ${roundTarget} pts`,
+    W / 2,
+    106
+  );
+
+  const winner = ranking[0];
+
+  ctx.fillStyle = "#d4b85e";
+  ctx.font = '900 30px "Playfair Display", Georgia, serif';
+  ctx.fillText(`🏆 ¡${winner.name} gana!`, W / 2, 155);
+
+  ctx.fillStyle = "#c4b89a";
+  ctx.font = '500 16px "DM Sans", sans-serif';
+  ctx.fillText(`${winner.score} puntos`, W / 2, 180);
+
+  const rankY = 220;
+  const rankColors = ["#d4b85e", "#94a3b8", "#b45309", "#555"];
+
+  ranking.forEach((p, i) => {
+    const y = rankY + i * 44;
+
+    ctx.fillStyle = rankColors[i];
+    ctx.font = '900 22px "Playfair Display", Georgia, serif';
+    ctx.textAlign = "left";
+    ctx.fillText(`${i + 1}`, 70, y);
+
+    ctx.fillStyle = "#e8dcc8";
+    ctx.font = '700 16px "DM Sans", sans-serif';
+    ctx.fillText(p.name, 100, y);
+
+    ctx.fillStyle = p.score >= 0 ? "#4ade80" : "#f87171";
+    ctx.font = '900 18px "Playfair Display", Georgia, serif';
+    ctx.textAlign = "right";
+    ctx.fillText(String(p.score), W - 70, y);
+  });
+
+  const cTop = 410;
+  const cBottom = 640;
+  const cLeft = 65;
+  const cRight = W - 45;
+  const cW = cRight - cLeft;
+  const cH = cBottom - cTop;
+
+  ctx.fillStyle = "#e8dcc8";
+  ctx.font = '700 16px "Playfair Display", Georgia, serif';
+  ctx.textAlign = "center";
+  ctx.fillText("Carrera de Burakeros", W / 2, cTop - 16);
+
+  ctx.fillStyle = "#c4b89a";
+  ctx.font = '600 14px "DM Sans", sans-serif';
+  ["Inicio", "R1", "R2", "R3"].forEach((label, i) => {
+    ctx.fillText(label, cLeft + (i / 3) * cW, cTop - 3);
+  });
+
+  for (let pos = 1; pos <= 4; pos++) {
+    const y = cTop + ((pos - 1) / 3) * cH;
+
+    ctx.strokeStyle = "rgba(232,220,200,0.08)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cLeft, y);
+    ctx.lineTo(cRight, y);
+    ctx.stroke();
+
+    ctx.fillStyle = "#8a9a8c";
+    ctx.font = '700 13px "Playfair Display", Georgia, serif';
+    ctx.textAlign = "right";
+    ctx.fillText(`${pos}º`, cLeft - 10, y + 5);
+  }
+
+  const paths = players.map((_, pIdx) =>
+    checkpoints.map((cp) => {
+      const entry = cp.find((e) => e.index === pIdx);
+      return entry.position;
+    })
+  );
+
+  paths.forEach((positions, pIdx) => {
+    const color = PLAYER_COLORS[pIdx];
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+
+    positions.forEach((pos, cpIdx) => {
+      const x = cLeft + (cpIdx / 3) * cW;
+      const y = cTop + ((pos - 1) / 3) * cH;
+
+      if (cpIdx === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        const prevX = cLeft + ((cpIdx - 1) / 3) * cW;
+        const prevY = cTop + ((positions[cpIdx - 1] - 1) / 3) * cH;
+        const cx = (prevX + x) / 2;
+        ctx.bezierCurveTo(cx, prevY, cx, y, x, y);
+      }
+    });
+
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    positions.forEach((pos, cpIdx) => {
+      const x = cLeft + (cpIdx / 3) * cW;
+      const y = cTop + ((pos - 1) / 3) * cH;
+      const r = 14;
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#1a1a2e";
+      ctx.font = '700 13px "Playfair Display", Georgia, serif';
+      ctx.textAlign = "center";
+      ctx.fillText(players[pIdx].charAt(0).toUpperCase(), x, y + 5);
+
+      if (cpIdx === 3 && pos === 1) {
+        ctx.font = "18px serif";
+        ctx.fillText("👑", x, y - 19);
+      }
+    });
+  });
+
+  const legY = cBottom + 28;
+  const legColW = cW / 2;
+
+  players.forEach((name, i) => {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const x = cLeft + col * legColW + 10;
+    const y = legY + row * 22;
+
+    ctx.fillStyle = PLAYER_COLORS[i];
+    ctx.beginPath();
+    ctx.arc(x, y - 4, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#e8dcc8";
+    ctx.font = '600 14px "DM Sans", sans-serif';
+    ctx.textAlign = "left";
+    ctx.fillText(name, x + 12, y);
+  });
+
+  ctx.fillStyle = "#555";
+  ctx.font = '11px "DM Sans", sans-serif';
+  ctx.textAlign = "center";
+  ctx.fillText("burakeros · planilla de puntuación", W / 2, H - 20);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), "image/png");
+  });
 }
 
 function loadHistory() {
@@ -522,7 +1075,7 @@ function BuracoSelector({ buracos, onAdd, onRemove }) {
             border: "1px solid rgba(248,113,113,0.2)",
           }}
         >
-          ⚠ Sin cerradas, todo negativo
+          ⚠ Sin buraco puede quedar negativo
         </div>
       )}
     </div>
@@ -630,7 +1183,7 @@ function EndTypeSelector({ pair1Name, pair2Name, endType, onChange }) {
     {
       key: "cards_out",
       label: "Se acabaron las cartas",
-      detail: "Nadie cerró",
+      detail: "Sin buraco va negativo",
       color: "#94a3b8",
     },
   ];
@@ -736,6 +1289,7 @@ export default function BurakerosApp() {
 
   const [faceSetIndex, setFaceSetIndex] = useState(0);
   const [heartFaces, setHeartFaces] = useState(false);
+  const [sharingImage, setSharingImage] = useState(false);
 
   useEffect(() => {
     const h = loadHistory();
@@ -815,6 +1369,57 @@ export default function BurakerosApp() {
   const toggleHeartFaces = () => {
     setHeartFaces((prev) => !prev);
   };
+
+  const checkpoints = useMemo(
+    () => getProgressiveRankings(rounds, roundTotals, players),
+    [rounds, roundTotals, players]
+  );
+
+  const handleShareImage = useCallback(async () => {
+    if (sharingImage) return;
+
+    setSharingImage(true);
+
+    try {
+      const blob = await generateShareImage(
+        players,
+        ranking,
+        checkpoints,
+        roundTarget
+      );
+
+      if (!blob) {
+        setSharingImage(false);
+        return;
+      }
+
+      if (
+        navigator.share &&
+        navigator.canShare &&
+        navigator.canShare({
+          files: [new File([blob], "burakeros.png", { type: "image/png" })],
+        })
+      ) {
+        await navigator.share({
+          files: [
+            new File([blob], "burakeros.png", { type: "image/png" }),
+          ],
+          title: "Burakeros - Resultado",
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "burakeros.png";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    setSharingImage(false);
+  }, [sharingImage, players, ranking, checkpoints, roundTarget]);
 
   const openHistoryFromSetup = () => {
     setHistoryReturnScreen("setup");
@@ -935,6 +1540,16 @@ export default function BurakerosApp() {
         updated[editingRound] = [...updated[editingRound], newSub];
       }
 
+      // If editing un-finishes this round, clear later rounds
+      const totals = getRoundTotals(updated);
+      for (let i = editingRound; i < updated.length - 1; i++) {
+        const rFinished =
+          totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
+        if (!rFinished && updated[i + 1].length > 0) {
+          updated[i + 1] = [];
+        }
+      }
+
       return updated;
     });
 
@@ -948,31 +1563,46 @@ export default function BurakerosApp() {
     setRounds((prev) => {
       const updated = prev.map((r) => [...r]);
       updated[rIdx] = updated[rIdx].filter((_, i) => i !== sIdx);
+
+      // If deleting un-finishes this round, clear later rounds
+      const totals = getRoundTotals(updated);
+      for (let i = rIdx; i < updated.length - 1; i++) {
+        const rFinished =
+          totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
+        if (!rFinished && updated[i + 1].length > 0) {
+          updated[i + 1] = [];
+        }
+      }
+
       return updated;
     });
   };
 
   useEffect(() => {
     if (hasActiveGame && !allFinished) {
-      const activeGame = {
-        gameId,
-        players,
-        roundTarget,
-        rounds,
-        showRules,
-        editingRound,
-        editingSubIdx,
-        t1Pts,
-        t2Pts,
-        t1Buracos,
-        t2Buracos,
-        subEndType,
-        faceSetIndex,
-        heartFaces,
-        savedAt: new Date().toISOString(),
-      };
+      const timerId = setTimeout(() => {
+        const activeGame = {
+          gameId,
+          players,
+          roundTarget,
+          rounds,
+          showRules,
+          editingRound,
+          editingSubIdx,
+          t1Pts,
+          t2Pts,
+          t1Buracos,
+          t2Buracos,
+          subEndType,
+          faceSetIndex,
+          heartFaces,
+          savedAt: new Date().toISOString(),
+        };
 
-      saveActiveGame(activeGame);
+        saveActiveGame(activeGame);
+      }, 800);
+
+      return () => clearTimeout(timerId);
     }
   }, [
     hasActiveGame,
@@ -1226,7 +1856,11 @@ export default function BurakerosApp() {
               onClick={() => {
                 if (confirm("¿Borrar todo el historial?")) {
                   setHistory([]);
-                  localStorage.removeItem(HISTORY_STORAGE_KEY);
+                  try {
+                    localStorage.removeItem(HISTORY_STORAGE_KEY);
+                  } catch (e) {
+                    console.error(e);
+                  }
                 }
               }}
               style={{
@@ -1932,6 +2566,31 @@ export default function BurakerosApp() {
             {lastPlace.name}, quedaste en el sótano!
           </div>
 
+          <MarioPartyChart
+            players={players}
+            checkpoints={checkpoints}
+            heartFaces={heartFaces}
+          />
+
+          <button
+            type="button"
+            onClick={handleShareImage}
+            disabled={sharingImage}
+            style={{
+              ...btn,
+              width: "100%",
+              padding: "13px 0",
+              fontSize: 15,
+              background: "rgba(232,220,200,0.08)",
+              color: "#c4b89a",
+              border: "1px solid rgba(232,220,200,0.18)",
+              marginBottom: 12,
+              opacity: sharingImage ? 0.5 : 1,
+            }}
+          >
+            {sharingImage ? "Generando..." : "📤 Compartir resultado"}
+          </button>
+
           <div style={{ display: "flex", gap: 10 }}>
             <button
               type="button"
@@ -2111,9 +2770,11 @@ export default function BurakerosApp() {
             <br />
             Si el rival bota comodín: tú no recibes penalización por no tener buraco
             <br />
-            Si se acaban las cartas: nadie cierra
+            Si se acaban las cartas: nadie cierra, sin buraco va negativo
           </div>
         )}
+
+        <WinningBanner ranking={ranking} heartFaces={heartFaces} />
 
         <div
           style={{
