@@ -1,23 +1,3 @@
-Sí. Te lo dejo completo ya integrado.
-
-Cambios incluidos:
-
-Vuelve No robó el muerto (−300)
-
-Si un equipo marca No robó el muerto, no puede seleccionar que cerró
-
-Si ya había seleccionado “cerró” y luego marca “no robó el muerto”, se desmarca automáticamente
-
-La imagen compartida ahora se genera capturando la pantalla real del resultado, con caras, ranking y carrera tal cual se ve
-
-En la Carrera de Burakeros, las líneas pasan exactamente por detrás de los marcadores, incluso cuando hay empates
-
-
-Antes de pegar el código, instala esto en StackBlitz:
-
-npm install html-to-image
-
-Luego reemplaza todo src/App.jsx por esto. Mantengo la misma estructura que ya venías trabajando para historial, guardado y pantallas.
 
 import {
   useState,
