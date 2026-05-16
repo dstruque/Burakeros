@@ -201,7 +201,6 @@ function getEndTypeInfo(endType) {
 function calcSubScore(sub, teamKey) {
   const score = sub[teamKey + "Score"] || 0;
   const buracos = sub[teamKey + "Buracos"] || [];
-  const noMuerto = sub[teamKey + "NoMuerto"] || false;
   const { team: endingTeam, type: endingType } = getEndTypeInfo(sub.endType);
 
   let buracoPts = 0;
@@ -223,7 +222,6 @@ function calcSubScore(sub, teamKey) {
     total = -Math.abs(total);
   }
 
-  if (noMuerto) total -= 300;
 
   return total;
 }
@@ -530,8 +528,6 @@ function TeamEntryPanel({
   buracos,
   onAddBuraco,
   onRemoveBuraco,
-  noMuerto,
-  onToggleNoMuerto,
 }) {
   return (
     <div
@@ -562,7 +558,7 @@ function TeamEntryPanel({
           marginBottom: 6,
         }}
       >
-        Puntos de cartas
+        Puntaje Base
       </label>
 
       <input
@@ -593,30 +589,6 @@ function TeamEntryPanel({
         onRemove={onRemoveBuraco}
       />
 
-      <button
-        type="button"
-        onClick={onToggleNoMuerto}
-        style={{
-          ...btn,
-          width: "100%",
-          marginTop: 8,
-          padding: "12px 14px",
-          fontSize: 14,
-          textAlign: "left",
-          background: noMuerto
-            ? "rgba(248,113,113,0.15)"
-            : "rgba(232,220,200,0.05)",
-          color: noMuerto ? "#f87171" : "#888",
-          border: `2px solid ${
-            noMuerto
-              ? "rgba(248,113,113,0.4)"
-              : "rgba(232,220,200,0.12)"
-          }`,
-          borderRadius: 12,
-        }}
-      >
-        {noMuerto ? "✓ " : "○ "}No robó el muerto (−300)
-      </button>
     </div>
   );
 }
@@ -736,8 +708,6 @@ export default function BurakerosApp() {
   const [t2Pts, setT2Pts] = useState("");
   const [t1Buracos, setT1Buracos] = useState([]);
   const [t2Buracos, setT2Buracos] = useState([]);
-  const [t1NoMuerto, setT1NoMuerto] = useState(false);
-  const [t2NoMuerto, setT2NoMuerto] = useState(false);
   const [subEndType, setSubEndType] = useState(null);
 
   const [history, setHistory] = useState([]);
@@ -808,8 +778,6 @@ export default function BurakerosApp() {
     setT2Pts("");
     setT1Buracos([]);
     setT2Buracos([]);
-    setT1NoMuerto(false);
-    setT2NoMuerto(false);
     setSubEndType(null);
   };
 
@@ -889,8 +857,6 @@ export default function BurakerosApp() {
     setT2Pts(savedGamePreview.t2Pts || "");
     setT1Buracos(savedGamePreview.t1Buracos || []);
     setT2Buracos(savedGamePreview.t2Buracos || []);
-    setT1NoMuerto(savedGamePreview.t1NoMuerto || false);
-    setT2NoMuerto(savedGamePreview.t2NoMuerto || false);
     setSubEndType(savedGamePreview.subEndType || null);
 
     setFaceSetIndex(savedGamePreview.faceSetIndex || 0);
@@ -929,8 +895,6 @@ export default function BurakerosApp() {
       setT2Pts(String(s.team2Score || 0));
       setT1Buracos([...(s.team1Buracos || [])]);
       setT2Buracos([...(s.team2Buracos || [])]);
-      setT1NoMuerto(s.team1NoMuerto || false);
-      setT2NoMuerto(s.team2NoMuerto || false);
       setSubEndType(s.endType || null);
     } else {
       resetInputs();
@@ -945,8 +909,6 @@ export default function BurakerosApp() {
       team2Score: parseInt(t2Pts, 10) || 0,
       team1Buracos: [...t1Buracos],
       team2Buracos: [...t2Buracos],
-      team1NoMuerto: t1NoMuerto,
-      team2NoMuerto: t2NoMuerto,
       endType: subEndType,
     };
 
@@ -990,8 +952,6 @@ export default function BurakerosApp() {
         t2Pts,
         t1Buracos,
         t2Buracos,
-        t1NoMuerto,
-        t2NoMuerto,
         subEndType,
         faceSetIndex,
         heartFaces,
@@ -1014,8 +974,6 @@ export default function BurakerosApp() {
     t2Pts,
     t1Buracos,
     t2Buracos,
-    t1NoMuerto,
-    t2NoMuerto,
     subEndType,
     faceSetIndex,
     heartFaces,
@@ -1675,8 +1633,6 @@ export default function BurakerosApp() {
             onRemoveBuraco={(idx) =>
               setT1Buracos((p) => p.filter((_, i) => i !== idx))
             }
-            noMuerto={t1NoMuerto}
-            onToggleNoMuerto={() => setT1NoMuerto((v) => !v)}
           />
 
           <TeamEntryPanel
@@ -1688,8 +1644,6 @@ export default function BurakerosApp() {
             onRemoveBuraco={(idx) =>
               setT2Buracos((p) => p.filter((_, i) => i !== idx))
             }
-            noMuerto={t2NoMuerto}
-            onToggleNoMuerto={() => setT2NoMuerto((v) => !v)}
           />
 
           <EndTypeSelector
@@ -2135,7 +2089,7 @@ export default function BurakerosApp() {
             <br />
             Buraco As Limpio: 800 · As Sucio: 500
             <br />
-            Cerrar: +200 · No robó muerto: −300
+            Cerrar: +200
             <br />
             Si el rival cierra y no tienes buraco: todo negativo
             <br />
