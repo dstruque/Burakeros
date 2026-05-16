@@ -1,1398 +1,68 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { toBlob } from "html-to-image";
-
-const ROTATIONS = [
-  { pair1: [0, 1], pair2: [2, 3] },
-  { pair1: [0, 2], pair2: [1, 3] },
-  { pair1: [0, 3], pair2: [1, 2] },
-];
-
-const BURACO_TYPES = [
-  { key: "limpio", label: "Limpio", pts: 500, color: "#22c55e" },
-  { key: "sucio", label: "Sucio", pts: 300, color: "#eab308" },
-  { key: "as_limpio", label: "As Limpio", pts: 800, color: "#3b82f6" },
-  { key: "as_sucio", label: "As Sucio", pts: 500, color: "#8b5cf6" },
-];
-
-const FACE_SETS = [
-  {
-    normal: { woman: "/mujer.png", man: "/hombre.png" },
-    hearts: { woman: "/Mujerc.png", man: "/Hombrec.png" },
-  },
-  {
-    normal: { woman: "/Mujer2.png", man: "/Hombre2.png" },
-    hearts: { woman: "/Mujerc2.png", man: "/Hombrec2.png" },
-  },
-  {
-    normal: { woman: "/Mujer3.png", man: "/Hombre3.png" },
-    hearts: { woman: "/Mujerc3.png", man: "/Hombrec3.png" },
-  },
-];
-
-const PLAYER_AVATARS = {
-  fernando: {
-    normal: "/hombre.png",
-    hearts: "/Hombrec.png",
-  },
-  lucy: {
-    normal: "/mujer.png",
-    hearts: "/Mujerc.png",
-  },
-  audrey: {
-    normal: "/Mujer2.png",
-    hearts: "/Mujerc2.png",
-  },
-  "juan miguel": {
-    normal: "/Hombre2.png",
-    hearts: "/Hombrec2.png",
-  },
-  werner: {
-    normal: "/Hombre3.png",
-    hearts: "/Hombrec3.png",
-  },
-  ivetty: {
-    normal: "/Mujer3.png",
-    hearts: "/Mujerc3.png",
-  },
-};
-
-const PLAYER_COLORS = ["#d4b85e", "#4ade80", "#60a5fa", "#f472b6"];
-
-const HISTORY_STORAGE_KEY = "burakeros-history";
-const ACTIVE_GAME_STORAGE_KEY = "burakeros-active-game";
-const LAST_PLAYERS_STORAGE_KEY = "burakeros-last-players";
-
-const FONT_LINK =
-  "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap";
-
-const btn = {
-  border: "none",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontFamily: "'Playfair Display', Georgia, serif",
-  fontWeight: 700,
-  transition: "all 0.2s ease",
-};
-
-const bg =
-  "linear-gradient(160deg, #0d1b0e 0%, #1a2e1c 40%, #0f1a11 100%)";
-
-const gold = "linear-gradient(135deg, #c4a24e, #d4b85e)";
-
-const faceWrapStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 12,
-  marginBottom: 10,
-};
-
-const setupFaceStyle = {
-  width: 58,
-  height: 58,
-  objectFit: "contain",
-  animation: "faceSwing 3.4s ease-in-out infinite",
-  filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.28))",
-};
-
-const setupFaceReverseStyle = {
-  ...setupFaceStyle,
-  animationDelay: "1.7s",
-};
-
-const gameFaceStyle = {
-  width: 44,
-  height: 44,
-  objectFit: "contain",
-  animation: "faceSwing 3.4s ease-in-out infinite",
-  filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.28))",
-};
-
-const gameFaceReverseStyle = {
-  ...gameFaceStyle,
-  animationDelay: "1.7s",
-};
-
-function AppStyles() {
-  return (
-    <>
-      <link href={FONT_LINK} rel="stylesheet" />
-      <style>{`
-        @keyframes faceSwing {
-          0% {
-            transform: translateX(-6px) rotate(-2deg);
-          }
-          50% {
-            transform: translateX(6px) rotate(2deg);
-          }
-          100% {
-            transform: translateX(-6px) rotate(-2deg);
-          }
-        }
-
-        @keyframes winnerPop {
-          0% {
-            transform: scale(0.92);
-            opacity: 0;
-          }
-          100% {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-
-        input[type="number"]::-webkit-outer-spin-button,
-        input[type="number"]::-webkit-inner-spin-button {
-          -webkit-appearance: none;
-          margin: 0;
-        }
-
-        input[type="number"] {
-          -moz-appearance: textfield;
-        }
-
-        button:active {
-          transform: scale(0.98);
-        }
-      `}</style>
-    </>
-  );
-}
-
-function createGameId() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function normalizeName(name) {
-  return name
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function getPlayerAvatar(name, heartFaces) {
-  const avatar = PLAYER_AVATARS[normalizeName(name)];
-  if (!avatar) return null;
-  return heartFaces ? avatar.hearts : avatar.normal;
-}
-
-function getEndTypeInfo(endType) {
-  if (endType === "team1_closed") {
-    return { team: "team1", type: "closed" };
-  }
-
-  if (endType === "team2_closed") {
-    return { team: "team2", type: "closed" };
-  }
-
-  if (endType === "team1_joker") {
-    return { team: "team1", type: "joker" };
-  }
-
-  if (endType === "team2_joker") {
-    return { team: "team2", type: "joker" };
-  }
-
-  if (endType === "cards_out") {
-    return { team: null, type: "cards_out" };
-  }
-
-  return { team: null, type: null };
-}
-
-function calcSubScore(sub, teamKey) {
-  const score = sub[teamKey + "Score"] || 0;
-  const buracos = sub[teamKey + "Buracos"] || [];
-  const noMuerto = sub[teamKey + "NoMuerto"] || false;
-  const { team: endingTeam, type: endingType } = getEndTypeInfo(sub.endType);
-
-  let buracoPts = 0;
-
-  buracos.forEach((b) => {
-    const bt = BURACO_TYPES.find((t) => t.key === b);
-    if (bt) buracoPts += bt.pts;
-  });
-
-  let total = score + buracoPts;
-
-  if (endingType === "closed" && endingTeam === teamKey) {
-    total += 200;
-  }
-
-  if (endingType === "joker" && endingTeam === teamKey) {
-    total = -Math.abs(total);
-  } else if (
-    endingType === "closed" &&
-    endingTeam !== teamKey &&
-    buracos.length === 0
-  ) {
-    total = -Math.abs(total);
-  } else if (endingType === "cards_out" && buracos.length === 0) {
-    total = -Math.abs(total);
-  }
-
-  if (noMuerto) total -= 300;
-
-  return total;
-}
-
-function getRoundTotals(rounds) {
-  return rounds.map((subs) => {
-    let t1 = 0;
-    let t2 = 0;
-
-    subs.forEach((s) => {
-      t1 += calcSubScore(s, "team1");
-      t2 += calcSubScore(s, "team2");
-    });
-
-    return { t1, t2 };
-  });
-}
-
-function getCumulativeScores(rounds, roundTotals, players) {
-  const cs = players.map(() => 0);
-
-  rounds.forEach((_, rIdx) => {
-    const rot = ROTATIONS[rIdx];
-    const t = roundTotals[rIdx];
-
-    rot.pair1.forEach((pi) => {
-      cs[pi] += t.t1;
-    });
-
-    rot.pair2.forEach((pi) => {
-      cs[pi] += t.t2;
-    });
-  });
-
-  return cs;
-}
-
-function getRoundWinner(totals, roundTarget) {
-  const t1Reached = totals.t1 >= roundTarget;
-  const t2Reached = totals.t2 >= roundTarget;
-
-  if (!t1Reached && !t2Reached) return null;
-
-  if (totals.t1 > totals.t2) return "team1";
-  if (totals.t2 > totals.t1) return "team2";
-
-  return "tie";
-}
-
-function getProgressiveRankings(rounds, roundTotals, players) {
-  const checkpoints = [];
-  const cumulative = players.map(() => 0);
-
-  for (let rIdx = 0; rIdx < rounds.length; rIdx++) {
-    const rot = ROTATIONS[rIdx];
-    const t = roundTotals[rIdx];
-
-    rot.pair1.forEach((pi) => {
-      cumulative[pi] += t.t1;
-    });
-
-    rot.pair2.forEach((pi) => {
-      cumulative[pi] += t.t2;
-    });
-
-    const sorted = players
-      .map((_, i) => ({ index: i, score: cumulative[i] }))
-      .sort((a, b) => b.score - a.score);
-
-    let pos = 1;
-
-    sorted.forEach((p, i) => {
-      if (i > 0 && p.score === sorted[i - 1].score) {
-        p.position = sorted[i - 1].position;
-      } else {
-        p.position = pos;
-      }
-
-      pos++;
-    });
-
-    checkpoints.push(sorted);
-  }
-
-  return checkpoints;
-}
-
-function getTieOffsets(checkpoints, players, markerR) {
-  return checkpoints.map((cp) => {
-    const groups = {};
-
-    cp.forEach((entry) => {
-      if (!groups[entry.position]) groups[entry.position] = [];
-      groups[entry.position].push(entry.index);
-    });
-
-    const offsets = {};
-    const spacing = markerR * 2 + 3;
-
-    Object.values(groups).forEach((group) => {
-      group.forEach((pIdx, i) => {
-        offsets[pIdx] =
-          group.length > 1
-            ? (i - (group.length - 1) / 2) * spacing
-            : 0;
-      });
-    });
-
-    return offsets;
-  });
-}
-
-function MarioPartyChart({ players, checkpoints, heartFaces }) {
-  const W = 400;
-  const H = 350;
-  const padL = 48;
-  const padR = 20;
-  const padT = 62;
-  const padB = 66;
-
-  const chartLeft = padL;
-  const chartRight = W - padR;
-  const chartTop = padT;
-  const chartBottom = H - padB;
-  const chartW = chartRight - chartLeft;
-  const chartH = chartBottom - chartTop;
-
-  const markerR = 16;
-
-  const playerPaths = useMemo(
-    () =>
-      players.map((_, pIdx) =>
-        checkpoints.map((cp) => {
-          const entry = cp.find((e) => e.index === pIdx);
-          return { position: entry.position, score: entry.score };
-        })
-      ),
-    [checkpoints, players]
-  );
-
-  const tieOffsets = useMemo(
-    () => getTieOffsets(checkpoints, players, markerR),
-    [checkpoints, players]
-  );
-
-  const getX = (cpIdx) => chartLeft + (cpIdx / 2) * chartW;
-  const getY = (pos) => chartTop + ((pos - 1) / 3) * chartH;
-
-  const labels = ["R1", "R2", "R3"];
-
-  const winnerIdx = checkpoints[2]
-    ? checkpoints[2].find((e) => e.position === 1)?.index
-    : null;
-
-  return (
-    <div
-      style={{
-        background: "rgba(232,220,200,0.06)",
-        borderRadius: 16,
-        padding: "16px 8px 10px",
-        border: "1px solid rgba(232,220,200,0.1)",
-        marginBottom: 16,
-      }}
-    >
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        style={{ width: "100%", display: "block" }}
-      >
-        <text
-          x={W / 2}
-          y="24"
-          textAnchor="middle"
-          fill="#e8dcc8"
-          fontSize="17"
-          fontWeight="900"
-          fontFamily="'Playfair Display', serif"
-        >
-          Carrera de Burakeros
-        </text>
-
-        {labels.map((label, i) => (
-          <text
-            key={label}
-            x={getX(i)}
-            y={chartTop - 12}
-            textAnchor="middle"
-            fill="#c4b89a"
-            fontSize="14"
-            fontWeight="600"
-            fontFamily="'DM Sans', sans-serif"
-          >
-            {label}
-          </text>
-        ))}
-
-        {[1, 2, 3, 4].map((pos) => (
-          <g key={pos}>
-            <line
-              x1={chartLeft}
-              y1={getY(pos)}
-              x2={chartRight}
-              y2={getY(pos)}
-              stroke="rgba(232,220,200,0.07)"
-              strokeWidth="1"
-            />
-
-            <text
-              x={chartLeft - 14}
-              y={getY(pos) + 5}
-              textAnchor="middle"
-              fill="#8a9a8c"
-              fontSize="13"
-              fontFamily="'Playfair Display', serif"
-              fontWeight="700"
-            >
-              {pos}º
-            </text>
-          </g>
-        ))}
-
-        {[0, 1, 2].map((i) => (
-          <line
-            key={`v${i}`}
-            x1={getX(i)}
-            y1={chartTop}
-            x2={getX(i)}
-            y2={chartBottom}
-            stroke="rgba(232,220,200,0.05)"
-            strokeWidth="1"
-            strokeDasharray="4,4"
-          />
-        ))}
-
-        {playerPaths.map((path, pIdx) => {
-          const color = PLAYER_COLORS[pIdx];
-          const pts = path.map((p, i) => ({
-            x: getX(i) + (tieOffsets[i]?.[pIdx] || 0),
-            y: getY(p.position),
-          }));
-
-          let d = `M ${pts[0].x} ${pts[0].y}`;
-
-          for (let i = 1; i < pts.length; i++) {
-            const prev = pts[i - 1];
-            const curr = pts[i];
-            const cx = (prev.x + curr.x) / 2;
-            d += ` C ${cx} ${prev.y}, ${cx} ${curr.y}, ${curr.x} ${curr.y}`;
-          }
-
-          return (
-            <path
-              key={`line-${pIdx}`}
-              d={d}
-              fill="none"
-              stroke={color}
-              strokeWidth="3"
-              strokeLinecap="round"
-              opacity="0.6"
-            />
-          );
-        })}
-
-        {playerPaths.map((path, pIdx) => {
-          const color = PLAYER_COLORS[pIdx];
-          const name = players[pIdx];
-          const avatarSrc = getPlayerAvatar(name, heartFaces);
-          const initial = name.charAt(0).toUpperCase();
-          const isWinner = pIdx === winnerIdx;
-
-          return path.map((p, cpIdx) => {
-            const baseX = getX(cpIdx);
-            const ox = tieOffsets[cpIdx]?.[pIdx] || 0;
-            const x = baseX + ox;
-            const y = getY(p.position);
-            const clipId = `mp-clip-${pIdx}-${cpIdx}`;
-
-            return (
-              <g key={`m-${pIdx}-${cpIdx}`}>
-                {avatarSrc ? (
-                  <>
-                    <defs>
-                      <clipPath id={clipId}>
-                        <circle cx={x} cy={y} r={markerR} />
-                      </clipPath>
-                    </defs>
-
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r={markerR + 2}
-                      fill={color}
-                      opacity="0.9"
-                    />
-
-                    <image
-                      href={avatarSrc}
-                      x={x - markerR}
-                      y={y - markerR}
-                      width={markerR * 2}
-                      height={markerR * 2}
-                      clipPath={`url(#${clipId})`}
-                      preserveAspectRatio="xMidYMid slice"
-                    />
-                  </>
-                ) : (
-                  <>
-                    <circle cx={x} cy={y} r={markerR} fill={color} />
-
-                    <text
-                      x={x}
-                      y={y + 5}
-                      textAnchor="middle"
-                      fill="#1a1a2e"
-                      fontSize="14"
-                      fontWeight="700"
-                      fontFamily="'Playfair Display', serif"
-                    >
-                      {initial}
-                    </text>
-                  </>
-                )}
-
-                {cpIdx === 2 && isWinner && (
-                  <text
-                    x={x}
-                    y={y - markerR - 6}
-                    textAnchor="middle"
-                    fontSize="20"
-                  >
-                    👑
-                  </text>
-                )}
-              </g>
-            );
-          });
-        })}
-
-        {players.map((name, i) => {
-          const col = i % 2;
-          const row = Math.floor(i / 2);
-          const legendX = chartLeft + col * (chartW / 2) + 6;
-          const legendY = chartBottom + 24 + row * 22;
-
-          return (
-            <g key={`leg-${i}`}>
-              <circle
-                cx={legendX}
-                cy={legendY - 4}
-                r="6"
-                fill={PLAYER_COLORS[i]}
-              />
-
-              <text
-                x={legendX + 12}
-                y={legendY}
-                fill="#e8dcc8"
-                fontSize="13"
-                fontWeight="600"
-                fontFamily="'DM Sans', sans-serif"
-              >
-                {name}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-function WinningBanner({ ranking, heartFaces }) {
-  const hasScores = ranking.some((p) => p.score !== 0);
-
-  if (!hasScores) return null;
-
-  const leader = ranking[0];
-  const isTied =
-    ranking.length > 1 && ranking[0].score === ranking[1].score;
-
-  return (
-    <div
-      style={{
-        background:
-          "linear-gradient(135deg, rgba(196,162,78,0.12), rgba(212,184,94,0.06))",
-        borderRadius: 12,
-        padding: "10px 16px",
-        border: "1px solid rgba(212,184,94,0.2)",
-        marginBottom: 14,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 10,
-      }}
-    >
-      {isTied ? (
-        <span
-          style={{
-            color: "#c4b89a",
-            fontSize: 14,
-            fontFamily: "'DM Sans', sans-serif",
-          }}
-        >
-          ⚖️ Empate · {leader.score} pts
-        </span>
-      ) : (
-        <>
-          <span style={{ fontSize: 16 }}>👑</span>
-
-          <PlayerAvatar name={leader.name} heartFaces={heartFaces} size={28} />
-
-          <span
-            style={{
-              color: "#d4b85e",
-              fontSize: 15,
-              fontWeight: 700,
-              fontFamily: "'Playfair Display', serif",
-            }}
-          >
-            {leader.name}
-          </span>
-
-          <span style={{ color: "#c4b89a", fontSize: 13 }}>
-            lidera con {leader.score} pts
-          </span>
-        </>
-      )}
-    </div>
-  );
-}
-
-function getHistoricalTargetOptions(history) {
-  const targets = new Set([3000]);
-
-  history.forEach((game) => {
-    const target = Number(game.roundTarget || 3000);
-    if (Number.isFinite(target) && target > 0) targets.add(target);
-  });
-
-  return Array.from(targets).sort((a, b) => a - b);
-}
-
-function getHistoricalRanking(history, target) {
-  const aggregates = new Map();
-
-  history
-    .filter((game) => Number(game.roundTarget || 3000) === Number(target))
-    .forEach((game) => {
-      (game.ranking || []).forEach((player) => {
-        const displayName = (player.name || "").trim();
-        const key = normalizeName(displayName);
-
-        if (!key) return;
-
-        const current = aggregates.get(key) || {
-          key,
-          name: displayName,
-          totalPoints: 0,
-          gamesPlayed: 0,
-        };
-
-        current.name = displayName || current.name;
-        current.totalPoints += Number(player.score) || 0;
-        current.gamesPlayed += 1;
-
-        aggregates.set(key, current);
-      });
-    });
-
-  return Array.from(aggregates.values())
-    .map((player) => ({
-      ...player,
-      averagePoints:
-        player.gamesPlayed > 0
-          ? player.totalPoints / player.gamesPlayed
-          : 0,
-    }))
-    .sort((a, b) => {
-      if (b.averagePoints !== a.averagePoints) {
-        return b.averagePoints - a.averagePoints;
-      }
-
-      if (b.gamesPlayed !== a.gamesPlayed) {
-        return b.gamesPlayed - a.gamesPlayed;
-      }
-
-      return a.name.localeCompare(b.name, "es");
-    });
-}
-
-function formatAveragePoints(value) {
-  return Number(value || 0).toLocaleString("es", {
-    maximumFractionDigits: 1,
-    minimumFractionDigits: 0,
-  });
-}
-
-function HistoricalRankingRows({ ranking, limit = null }) {
-  const rows = limit ? ranking.slice(0, limit) : ranking;
-
-  return (
-    <>
-      {rows.map((player, index) => (
-        <div
-          key={player.key}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 10,
-            padding: "10px 0",
-            borderBottom:
-              index < rows.length - 1
-                ? "1px solid rgba(232,220,200,0.08)"
-                : "none",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              minWidth: 0,
-            }}
-          >
-            <span
-              style={{
-                width: 28,
-                color:
-                  index === 0
-                    ? "#d4b85e"
-                    : index === 1
-                    ? "#94a3b8"
-                    : index === 2
-                    ? "#b45309"
-                    : "#8a9a8c",
-                fontFamily: "'Playfair Display', serif",
-                fontSize: 20,
-                fontWeight: 900,
-                flexShrink: 0,
-              }}
-            >
-              {index + 1}
-            </span>
-
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  color: "#e8dcc8",
-                  fontWeight: 700,
-                  fontSize: 15,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {player.name}
-              </div>
-              <div
-                style={{
-                  color: "#8a9a8c",
-                  fontSize: 12,
-                  marginTop: 2,
-                }}
-              >
-                {player.gamesPlayed} partida
-                {player.gamesPlayed !== 1 ? "s" : ""}
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              textAlign: "right",
-              flexShrink: 0,
-            }}
-          >
-            <div
-              style={{
-                color: "#4ade80",
-                fontFamily: "'Playfair Display', serif",
-                fontWeight: 900,
-                fontSize: 18,
-              }}
-            >
-              {formatAveragePoints(player.averagePoints)}
-            </div>
-            <div
-              style={{
-                color: "#8a9a8c",
-                fontSize: 11,
-                marginTop: 1,
-              }}
-            >
-              pts promedio
-            </div>
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function HistoricalRankingImageCard({ ranking, target }) {
-  return (
-    <div
-      style={{
-        width: 460,
-        boxSizing: "border-box",
-        background: bg,
-        padding: 22,
-        fontFamily: "'DM Sans', sans-serif",
-        color: "#e8dcc8",
-      }}
-    >
-      <div style={{ textAlign: "center", marginBottom: 18 }}>
-        <div style={{ fontSize: 24, marginBottom: 6 }}>♠ ♥ ♦ ♣</div>
-        <h2
-          style={{
-            fontFamily: "'Playfair Display', serif",
-            fontSize: 30,
-            margin: 0,
-            fontWeight: 900,
-            color: "#e8dcc8",
-          }}
-        >
-          Ranking Histórico
-        </h2>
-        <div
-          style={{
-            color: "#c4b89a",
-            fontSize: 14,
-            marginTop: 6,
-          }}
-        >
-          Burakeros · partidas a {target} puntos
-        </div>
-      </div>
-
-      <div
-        style={{
-          background: "rgba(232,220,200,0.06)",
-          borderRadius: 18,
-          padding: 16,
-          border: "1px solid rgba(232,220,200,0.12)",
-        }}
-      >
-        {ranking.length === 0 ? (
-          <div
-            style={{
-              padding: "24px 10px",
-              textAlign: "center",
-              color: "#8a9a8c",
-              fontSize: 14,
-            }}
-          >
-            No hay partidas guardadas con este puntaje.
-          </div>
-        ) : (
-          <HistoricalRankingRows ranking={ranking} limit={6} />
-        )}
-      </div>
-
-      <div
-        style={{
-          textAlign: "center",
-          color: "#666",
-          fontSize: 11,
-          marginTop: 14,
-        }}
-      >
-        Top 6 por puntos promedio
-      </div>
-    </div>
-  );
-}
-
-function loadHistory() {
-  try {
-    const saved = localStorage.getItem(HISTORY_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(history) {
-  try {
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-function loadActiveGame() {
-  try {
-    const saved = localStorage.getItem(ACTIVE_GAME_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveActiveGame(game) {
-  try {
-    localStorage.setItem(ACTIVE_GAME_STORAGE_KEY, JSON.stringify(game));
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-function clearActiveGame() {
-  try {
-    localStorage.removeItem(ACTIVE_GAME_STORAGE_KEY);
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-function loadLastPlayers() {
-  try {
-    const saved = localStorage.getItem(LAST_PLAYERS_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLastPlayers(players) {
-  try {
-    localStorage.setItem(LAST_PLAYERS_STORAGE_KEY, JSON.stringify(players));
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-function SuitEasterEggs({
-  onDiamondClick,
-  onHeartClick,
-  heartFaces,
-  compact = false,
-}) {
-  return (
-    <div
-      style={{
-        fontSize: compact ? 22 : 28,
-        marginBottom: compact ? 6 : 8,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: compact ? 8 : 10,
-        userSelect: "none",
-      }}
-    >
-      <span>♠</span>
-      <button
-        type="button"
-        onClick={onHeartClick}
-        aria-label="Activar corazones"
-        style={{
-          border: "none",
-          background: "transparent",
-          color: heartFaces ? "#fb7185" : "inherit",
-          fontSize: "inherit",
-          padding: 0,
-          cursor: "pointer",
-          lineHeight: 1,
-          filter: heartFaces
-            ? "drop-shadow(0 0 8px rgba(251,113,133,0.7))"
-            : "none",
-        }}
-      >
-        ♥
-      </button>
-      <button
-        type="button"
-        onClick={onDiamondClick}
-        aria-label="Cambiar caras"
-        style={{
-          border: "none",
-          background: "transparent",
-          color: "inherit",
-          fontSize: "inherit",
-          padding: 0,
-          cursor: "pointer",
-          lineHeight: 1,
-        }}
-      >
-        ♦
-      </button>
-      <span>♣</span>
-    </div>
-  );
-}
-
-function PlayerAvatar({ name, heartFaces, size = 34 }) {
-  const src = getPlayerAvatar(name, heartFaces);
-
-  if (!src) {
-    return (
-      <div
-        style={{
-          width: size,
-          height: size,
-          borderRadius: "50%",
-          background: "rgba(232,220,200,0.08)",
-          border: "1px solid rgba(232,220,200,0.12)",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={name}
-      style={{
-        width: size,
-        height: size,
-        objectFit: "contain",
-        flexShrink: 0,
-        filter: "drop-shadow(0 3px 7px rgba(0,0,0,0.28))",
-      }}
-    />
-  );
-}
-
-function BuracoSelector({ buracos, onAdd, onRemove }) {
-  return (
-    <div style={{ marginTop: 14 }}>
-      <p
-        style={{
-          color: "#c4b89a",
-          fontSize: 13,
-          fontWeight: 700,
-          margin: "0 0 8px",
-          textTransform: "uppercase",
-          letterSpacing: 1,
-        }}
-      >
-        Buracos cerrados
-      </p>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 8,
-          marginBottom: 10,
-        }}
-      >
-        {BURACO_TYPES.map((bt) => (
-          <button
-            key={bt.key}
-            type="button"
-            onClick={() => onAdd(bt.key)}
-            style={{
-              ...btn,
-              padding: "12px 8px",
-              fontSize: 14,
-              background: bt.color + "25",
-              color: bt.color,
-              border: `2px solid ${bt.color}77`,
-              borderRadius: 12,
-              lineHeight: 1.3,
-            }}
-          >
-            + {bt.label}
-            <br />
-            <span style={{ fontSize: 12, opacity: 0.8 }}>
-              {bt.pts} pts
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {buracos.length > 0 ? (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 6,
-            marginBottom: 8,
-          }}
-        >
-          {buracos.map((b, i) => {
-            const bt = BURACO_TYPES.find((t) => t.key === b);
-
-            return (
-              <span
-                key={`${b}-${i}`}
-                onClick={() => onRemove(i)}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: 20,
-                  background: bt.color + "33",
-                  color: bt.color,
-                  fontSize: 13,
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                {bt.label} ✕
-              </span>
-            );
-          })}
-        </div>
-      ) : (
-        <div
-          style={{
-            color: "#f87171",
-            fontSize: 13,
-            marginBottom: 8,
-            padding: "8px 12px",
-            background: "rgba(248,113,113,0.1)",
-            borderRadius: 8,
-            border: "1px solid rgba(248,113,113,0.2)",
-          }}
-        >
-          ⚠ Sin buraco puede quedar negativo
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TeamEntryPanel({
-  teamName,
-  points,
-  onPointsChange,
-  buracos,
-  onAddBuraco,
-  onRemoveBuraco,
-  noMuerto,
-  onToggleNoMuerto,
-}) {
-  return (
-    <div
-      style={{
-        background: "rgba(232,220,200,0.06)",
-        borderRadius: 14,
-        padding: 18,
-        border: "1px solid rgba(232,220,200,0.12)",
-        marginBottom: 14,
-      }}
-    >
-      <h3
-        style={{
-          fontFamily: "'Playfair Display', serif",
-          color: "#e8dcc8",
-          fontSize: 18,
-          margin: "0 0 14px",
-        }}
-      >
-        {teamName}
-      </h3>
-
-      <label
-        style={{
-          color: "#8a9a8c",
-          fontSize: 12,
-          display: "block",
-          marginBottom: 6,
-        }}
-      >
-        Puntaje Base
-      </label>
-
-      <input
-        type="number"
-        inputMode="numeric"
-        value={points}
-        onChange={(e) => onPointsChange(e.target.value)}
-        placeholder="0"
-        style={{
-          border: "2px solid rgba(232,220,200,0.25)",
-          borderRadius: 12,
-          padding: 14,
-          fontSize: 22,
-          fontFamily: "'Playfair Display', serif",
-          fontWeight: 700,
-          background: "rgba(250,249,246,0.08)",
-          color: "#e8dcc8",
-          outline: "none",
-          width: "100%",
-          boxSizing: "border-box",
-          textAlign: "center",
-        }}
-      />
-
-      <BuracoSelector
-        buracos={buracos}
-        onAdd={onAddBuraco}
-        onRemove={onRemoveBuraco}
-      />
-
-      <button
-        type="button"
-        onClick={onToggleNoMuerto}
-        style={{
-          ...btn,
-          width: "100%",
-          marginTop: 8,
-          padding: "12px 14px",
-          fontSize: 14,
-          textAlign: "left",
-          background: noMuerto
-            ? "rgba(248,113,113,0.15)"
-            : "rgba(232,220,200,0.05)",
-          color: noMuerto ? "#f87171" : "#888",
-          border: `2px solid ${
-            noMuerto
-              ? "rgba(248,113,113,0.4)"
-              : "rgba(232,220,200,0.12)"
-          }`,
-          borderRadius: 12,
-        }}
-      >
-        {noMuerto ? "✓ " : "○ "}No robó el muerto (−300)
-      </button>
-    </div>
-  );
-}
-
-function EndTypeSelector({
-  pair1Name,
-  pair2Name,
-  endType,
-  onChange,
-  team1NoMuerto,
-  team2NoMuerto,
-}) {
-  const options = [
-    {
-      key: "team1_closed",
-      label: `${pair1Name} cerró`,
-      detail: team1NoMuerto
-        ? "No puede cerrar si no robó el muerto"
-        : "+200",
-      color: "#4ade80",
-      disabled: team1NoMuerto,
-    },
-    {
-      key: "team2_closed",
-      label: `${pair2Name} cerró`,
-      detail: team2NoMuerto
-        ? "No puede cerrar si no robó el muerto"
-        : "+200",
-      color: "#4ade80",
-      disabled: team2NoMuerto,
-    },
-    {
-      key: "team1_joker",
-      label: `${pair1Name} botó comodín`,
-      detail: "Ese equipo va negativo",
-      color: "#f87171",
-      disabled: false,
-    },
-    {
-      key: "team2_joker",
-      label: `${pair2Name} botó comodín`,
-      detail: "Ese equipo va negativo",
-      color: "#f87171",
-      disabled: false,
-    },
-    {
-      key: "cards_out",
-      label: "Se acabaron las cartas",
-      detail: "Sin buraco va negativo",
-      color: "#94a3b8",
-      disabled: false,
-    },
-  ];
-
-  return (
-    <div
-      style={{
-        background: "rgba(232,220,200,0.06)",
-        borderRadius: 14,
-        padding: 18,
-        border: "1px solid rgba(232,220,200,0.12)",
-        marginBottom: 14,
-      }}
-    >
-      <p
-        style={{
-          color: "#c4b89a",
-          fontSize: 13,
-          fontWeight: 700,
-          margin: "0 0 10px",
-          textTransform: "uppercase",
-          letterSpacing: 1,
-        }}
-      >
-        ¿Cómo terminó la sub-ronda?
-      </p>
-
-      <div style={{ display: "grid", gap: 8 }}>
-        {options.map((option) => {
-          const selected = endType === option.key;
-
-          return (
-            <button
-              key={option.key}
-              type="button"
-              disabled={option.disabled}
-              onClick={() => {
-                if (!option.disabled) onChange(option.key);
-              }}
-              style={{
-                ...btn,
-                width: "100%",
-                padding: "12px 14px",
-                textAlign: "left",
-                borderRadius: 12,
-                background: selected
-                  ? option.color + "22"
-                  : "rgba(232,220,200,0.04)",
-                color: option.disabled
-                  ? "#666"
-                  : selected
-                  ? option.color
-                  : "#c4b89a",
-                border: `2px solid ${
-                  option.disabled
-                    ? "rgba(232,220,200,0.06)"
-                    : selected
-                    ? option.color + "88"
-                    : "rgba(232,220,200,0.1)"
-                }`,
-                opacity: option.disabled ? 0.55 : 1,
-                cursor: option.disabled ? "not-allowed" : "pointer",
-              }}
-            >
-              <div style={{ fontSize: 14 }}>
-                {selected ? "✓ " : option.disabled ? "⛔ " : "○ "}
-                {option.label}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  opacity: 0.8,
-                  marginTop: 3,
-                  fontFamily: "'DM Sans', sans-serif",
-                  fontWeight: 500,
-                }}
-              >
-                {option.detail}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+import { hasSupabaseConfig, supabase } from "./supabaseClient";
+
+import {
+  ALL_TARGETS_VALUE,
+  FACE_SETS,
+  HISTORICAL_RANGE_DAYS_OPTIONS,
+  ROTATIONS,
+} from "./utils/constants";
+import {
+  bg,
+  btn,
+  faceWrapStyle,
+  gameFaceReverseStyle,
+  gameFaceStyle,
+  gold,
+  setupFaceReverseStyle,
+  setupFaceStyle,
+} from "./utils/styles";
+import {
+  calcSubScore,
+  getCumulativeScores,
+  getEndTypeInfo,
+  getFilteredHistoricalGames,
+  getHistoricalRangeLabel,
+  getHistoricalRanking,
+  getHistoricalTargetLabel,
+  getHistoricalTargetOptions,
+  getProgressiveRankings,
+  getRoundTotals,
+  getRoundWinner,
+  hasRoundDetails,
+} from "./utils/scoring";
+import {
+  clearActiveGame,
+  createGameId,
+  loadActiveGame,
+  loadHistory,
+  loadLastPlayers,
+  loadOnlineAccessCode,
+  loadOnlineGroupName,
+  loadOnlineUser,
+  mapOnlineGameToHistoryEntry,
+  mergeHistoryEntries,
+  saveActiveGame,
+  saveHistory,
+  saveLastPlayers,
+  saveOnlineAccessCode,
+  saveOnlineGroupName,
+  saveOnlineUser,
+} from "./utils/storage";
+import { shareOrDownloadBlob, waitForImages } from "./utils/image";
+
+import AppStyles from "./components/AppStyles";
+import EndTypeSelector from "./components/EndTypeSelector";
+import {
+  HistoricalRankingImageCard,
+  HistoricalRankingRows,
+} from "./components/HistoricalRanking";
+import MarioPartyChart from "./components/MarioPartyChart";
+import PlayerAvatar from "./components/PlayerAvatar";
+import SuitEasterEggs from "./components/SuitEasterEggs";
+import TeamEntryPanel from "./components/TeamEntryPanel";
+import WinningBanner from "./components/WinningBanner";
 
 export default function BurakerosApp() {
   const [screen, setScreen] = useState("setup");
@@ -1415,15 +85,34 @@ export default function BurakerosApp() {
   const [t2NoMuerto, setT2NoMuerto] = useState(false);
   const [subEndType, setSubEndType] = useState(null);
 
-  const [history, setHistory] = useState([]);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [historicalTarget, setHistoricalTarget] = useState(3000);
+  const [history, setHistory] = useState(() => loadHistory());
+  const historyLoaded = true;
+  const [historicalTarget, setHistoricalTarget] = useState(ALL_TARGETS_VALUE);
+  const [historicalMetric, setHistoricalMetric] = useState("average");
+  const [historicalRangeMode, setHistoricalRangeMode] = useState("overall");
+  const [historicalRangeDays, setHistoricalRangeDays] = useState(30);
+  const [onlineAccessCode, setOnlineAccessCode] = useState(() =>
+    loadOnlineAccessCode()
+  );
+  const [onlineUserName, setOnlineUserName] = useState(() => loadOnlineUser());
+  const [createdGroupCode, setCreatedGroupCode] = useState("");
+  const [onlineGroupName, setOnlineGroupName] = useState(() =>
+    loadOnlineGroupName()
+  );
+  const [onlineStatus, setOnlineStatus] = useState(
+    hasSupabaseConfig ? "Desconectado" : "Supabase no configurado"
+  );
+  const [syncingOnline, setSyncingOnline] = useState(false);
+  const [onlinePanelOpen, setOnlinePanelOpen] = useState(false);
 
   const [gameSaved, setGameSaved] = useState(false);
   const [hasActiveGame, setHasActiveGame] = useState(false);
-  const [savedGamePreview, setSavedGamePreview] = useState(null);
+  const [savedGamePreview, setSavedGamePreview] = useState(() =>
+    loadActiveGame()
+  );
+  const [forceRoundView, setForceRoundView] = useState(false);
 
-  const [lastPlayers, setLastPlayers] = useState([]);
+  const [lastPlayers, setLastPlayers] = useState(() => loadLastPlayers());
   const [gameId, setGameId] = useState(null);
 
   const [faceSetIndex, setFaceSetIndex] = useState(0);
@@ -1432,20 +121,6 @@ export default function BurakerosApp() {
 
   const shareResultRef = useRef(null);
   const historicalRankingImageRef = useRef(null);
-
-  useEffect(() => {
-    const h = loadHistory();
-    const active = loadActiveGame();
-    const savedPlayers = loadLastPlayers();
-
-    setHistory(h);
-    setHistoryLoaded(true);
-    setLastPlayers(savedPlayers);
-
-    if (active) {
-      setSavedGamePreview(active);
-    }
-  }, []);
 
   const currentFaceSet = FACE_SETS[faceSetIndex];
   const headerFaces = heartFaces ? currentFaceSet.hearts : currentFaceSet.normal;
@@ -1479,16 +154,42 @@ export default function BurakerosApp() {
   );
 
   const historicalRanking = useMemo(
-    () => getHistoricalRanking(history, historicalTarget),
-    [history, historicalTarget]
+    () =>
+      getHistoricalRanking(
+        history,
+        historicalTarget,
+        historicalMetric,
+        historicalRangeMode,
+        historicalRangeDays
+      ),
+    [
+      history,
+      historicalTarget,
+      historicalMetric,
+      historicalRangeMode,
+      historicalRangeDays,
+    ]
   );
 
   const filteredHistoricalGamesCount = useMemo(
     () =>
-      history.filter(
-        (game) => Number(game.roundTarget || 3000) === Number(historicalTarget)
+      getFilteredHistoricalGames(
+        history,
+        historicalTarget,
+        historicalRangeMode,
+        historicalRangeDays
       ).length,
-    [history, historicalTarget]
+    [history, historicalTarget, historicalRangeMode, historicalRangeDays]
+  );
+
+  const historicalRangeLabel = useMemo(
+    () => getHistoricalRangeLabel(historicalRangeMode, historicalRangeDays),
+    [historicalRangeMode, historicalRangeDays]
+  );
+
+  const historicalTargetLabel = useMemo(
+    () => getHistoricalTargetLabel(historicalTarget),
+    [historicalTarget]
   );
 
   const allFinished = [0, 1, 2].every(isRoundFinished);
@@ -1518,6 +219,7 @@ export default function BurakerosApp() {
     setShowRules(false);
     setGameSaved(false);
     setHasActiveGame(false);
+    setForceRoundView(false);
     setEditingRound(null);
     setEditingSubIdx(null);
     setGameId(null);
@@ -1532,15 +234,229 @@ export default function BurakerosApp() {
     setHeartFaces((prev) => !prev);
   };
 
-  useEffect(() => {
-    if (t1NoMuerto && subEndType === "team1_closed") {
-      setSubEndType(null);
+  const connectOnlineHistory = useCallback(async () => {
+    const accessCode = onlineAccessCode.trim();
+    const groupName = onlineGroupName.trim();
+    const userName = onlineUserName.trim();
+
+    if (!hasSupabaseConfig || !supabase) {
+      setOnlineStatus("Supabase no configurado");
+      return;
     }
 
-    if (t2NoMuerto && subEndType === "team2_closed") {
+    if (!userName) {
+      setOnlineStatus("Ingresa tu usuario");
+      return;
+    }
+
+    if (!groupName && !accessCode) {
+      setOnlineStatus("Ingresa nombre o clave");
+      return;
+    }
+
+    setSyncingOnline(true);
+    setOnlineStatus("Conectando...");
+
+    try {
+      const { data: groupData, error: groupError } = await supabase.rpc(
+        "get_burakeros_group_v2",
+        {
+          p_name: groupName || null,
+          p_user_name: userName,
+          p_access_code: accessCode || null,
+        }
+      );
+
+      if (groupError) throw groupError;
+
+      const group = groupData?.[0];
+
+      if (!group) {
+        setOnlineStatus("No encontré ese grupo");
+        setOnlineGroupName("");
+        saveOnlineGroupName("");
+        return;
+      }
+
+      const { data: gamesData, error: gamesError } = await supabase.rpc(
+        "list_burakeros_games_v2",
+        {
+          p_name: group.group_name,
+          p_user_name: userName,
+          p_access_code: accessCode || null,
+        }
+      );
+
+      if (gamesError) throw gamesError;
+
+      const onlineHistory = (gamesData || []).map(mapOnlineGameToHistoryEntry);
+      const mergedHistory = mergeHistoryEntries(history, onlineHistory);
+
+      setHistory(mergedHistory);
+      saveHistory(mergedHistory);
+      saveOnlineAccessCode(accessCode);
+      saveOnlineGroupName(group.group_name);
+      saveOnlineUser(userName);
+      setOnlineGroupName(group.group_name);
+      setOnlineStatus(
+        `Conectado a ${group.group_name} · ${onlineHistory.length} online`
+      );
+    } catch (e) {
+      console.error(e);
+      setOnlineStatus("No se pudo conectar");
+      setOnlineGroupName("");
+      saveOnlineGroupName("");
+    } finally {
+      setSyncingOnline(false);
+    }
+  }, [history, onlineAccessCode, onlineGroupName, onlineUserName]);
+
+  const createOnlineGroup = useCallback(async () => {
+    const groupName = onlineGroupName.trim();
+    const userName = onlineUserName.trim();
+    const accessCode = onlineAccessCode.trim();
+
+    if (!hasSupabaseConfig || !supabase) {
+      setOnlineStatus("Supabase no configurado");
+      return;
+    }
+
+    if (!userName) {
+      setOnlineStatus("Ingresa tu usuario");
+      return;
+    }
+
+    if (!groupName) {
+      setOnlineStatus("Ponle nombre al grupo");
+      return;
+    }
+
+    setSyncingOnline(true);
+    setOnlineStatus("Creando grupo...");
+
+    try {
+      const { data, error } = await supabase.rpc("create_burakeros_group_v2", {
+        p_name: groupName,
+        p_user_name: userName,
+        p_access_code: accessCode || null,
+      });
+
+      if (error) throw error;
+
+      const created = data?.[0];
+
+      setOnlineAccessCode(created.access_code || "");
+      setCreatedGroupCode(created.access_code || "");
+      setOnlineGroupName(created.group_name || groupName);
+      saveOnlineAccessCode(created.access_code || "");
+      saveOnlineGroupName(created.group_name || groupName);
+      saveOnlineUser(userName);
+      setOnlineStatus(
+        created.access_code
+          ? `Grupo creado · clave ${created.access_code}`
+          : "Grupo creado sin clave"
+      );
+    } catch (e) {
+      console.error(e);
+      setOnlineStatus("No se pudo crear el grupo");
+    } finally {
+      setSyncingOnline(false);
+    }
+  }, [onlineAccessCode, onlineGroupName, onlineUserName]);
+
+  const uploadOnlineGame = useCallback(
+    async (entry) => {
+      const accessCode = onlineAccessCode.trim();
+      const groupName = onlineGroupName.trim();
+      const userName = onlineUserName.trim();
+
+      if (!hasSupabaseConfig || !supabase || (!accessCode && !groupName)) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase.rpc("upsert_burakeros_game_v2", {
+          p_name: groupName || null,
+          p_user_name: userName || null,
+          p_access_code: accessCode || null,
+          p_game: {
+            ...entry,
+            updatedBy: userName || entry.updatedBy || null,
+          },
+        });
+
+        if (error) throw error;
+
+        setOnlineStatus(
+          onlineGroupName
+            ? `Guardado online en ${onlineGroupName}`
+            : "Guardado online"
+        );
+      } catch (e) {
+        console.error(e);
+        setOnlineStatus("No se pudo guardar online");
+      }
+    },
+    [onlineAccessCode, onlineGroupName, onlineUserName]
+  );
+
+  const deleteHistoricalGame = useCallback(
+    async (game) => {
+      if (!confirm("¿Borrar esta partida del historial?")) return;
+
+      const nextHistory = history.filter((entry) => entry !== game);
+      setHistory(nextHistory);
+      saveHistory(nextHistory);
+
+      const accessCode = onlineAccessCode.trim();
+      const groupName = onlineGroupName.trim();
+      const userName = onlineUserName.trim();
+
+      if (
+        !hasSupabaseConfig ||
+        !supabase ||
+        (!accessCode && !groupName) ||
+        !game.gameId
+      ) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase.rpc("delete_burakeros_game_v2", {
+          p_name: groupName || null,
+          p_user_name: userName || null,
+          p_access_code: accessCode || null,
+          p_client_game_id: game.gameId,
+        });
+
+        if (error) throw error;
+
+        setOnlineStatus("Partida borrada online");
+      } catch (e) {
+        console.error(e);
+        setOnlineStatus("Borrada localmente, falló online");
+      }
+    },
+    [history, onlineAccessCode, onlineGroupName, onlineUserName]
+  );
+
+  const toggleTeam1NoMuerto = () => {
+    const next = !t1NoMuerto;
+    setT1NoMuerto(next);
+
+    if (next && subEndType === "team1_closed") {
       setSubEndType(null);
     }
-  }, [t1NoMuerto, t2NoMuerto, subEndType]);
+  };
+
+  const toggleTeam2NoMuerto = () => {
+    const next = !t2NoMuerto;
+    setT2NoMuerto(next);
+
+    if (next && subEndType === "team2_closed") {
+      setSubEndType(null);
+    }
+  };
 
   const checkpoints = useMemo(
     () => getProgressiveRankings(rounds, roundTotals, players),
@@ -1554,56 +470,23 @@ export default function BurakerosApp() {
 
     try {
       await document.fonts.ready;
-
-      const images = Array.from(
-        shareResultRef.current.querySelectorAll("img")
-      );
-
-      await Promise.all(
-        images.map((img) => {
-          if (img.complete) return Promise.resolve();
-
-          return new Promise((resolve) => {
-            img.onload = resolve;
-            img.onerror = resolve;
-          });
-        })
-      );
+      await waitForImages(shareResultRef.current);
 
       const blob = await toBlob(shareResultRef.current, {
         cacheBust: true,
         pixelRatio: 2,
         backgroundColor: "#0d1b0e",
+        skipFonts: true,
       });
 
       if (!blob) return;
 
-      const file = new File([blob], "burakeros.png", {
-        type: "image/png",
-      });
-
-      if (
-        navigator.share &&
-        navigator.canShare &&
-        navigator.canShare({ files: [file] })
-      ) {
-        await navigator.share({
-          files: [file],
-          title: "Burakeros - Resultado",
-        });
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "burakeros.png";
-        a.click();
-        URL.revokeObjectURL(url);
-      }
+      await shareOrDownloadBlob(blob, "burakeros.png", "Burakeros - Resultado");
     } catch (e) {
       console.error(e);
+    } finally {
+      setSharingImage(false);
     }
-
-    setSharingImage(false);
   }, [sharingImage]);
 
   const handleDownloadHistoricalRanking = useCallback(async () => {
@@ -1611,21 +494,22 @@ export default function BurakerosApp() {
 
     try {
       await document.fonts.ready;
+      await waitForImages(historicalRankingImageRef.current);
 
       const blob = await toBlob(historicalRankingImageRef.current, {
         cacheBust: true,
         pixelRatio: 2,
         backgroundColor: "#0d1b0e",
+        skipFonts: true,
       });
 
       if (!blob) return;
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `ranking-historico-burakeros-${historicalTarget}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await shareOrDownloadBlob(
+        blob,
+        `ranking-historico-burakeros-${historicalTarget}.png`,
+        "Burakeros - Ranking"
+      );
     } catch (e) {
       console.error(e);
     }
@@ -1645,6 +529,30 @@ export default function BurakerosApp() {
     setScreen(historyReturnScreen);
   };
 
+  const openHistoricalGame = (game) => {
+    if (!hasRoundDetails(game)) return;
+
+    setPlayers(game.players || ["", "", "", ""]);
+    setRoundTarget(game.roundTarget || 3000);
+    setRounds(game.roundDetails.map((subs) => subs.map((sub) => ({ ...sub }))));
+    setShowRules(false);
+    setEditingRound(null);
+    setEditingSubIdx(null);
+    resetInputs();
+    setGameId(game.gameId || createGameId());
+    setGameSaved(false);
+    setHasActiveGame(true);
+    setSavedGamePreview(null);
+    setForceRoundView(true);
+    setScreen("game");
+  };
+
+  const editFinishedRounds = () => {
+    setGameSaved(false);
+    setHasActiveGame(true);
+    setForceRoundView(true);
+  };
+
   const startNewGame = () => {
     const newGameId = createGameId();
 
@@ -1660,6 +568,7 @@ export default function BurakerosApp() {
     setShowRules(false);
     setGameSaved(false);
     setHasActiveGame(true);
+    setForceRoundView(false);
     setEditingRound(null);
     setEditingSubIdx(null);
     resetInputs();
@@ -1696,6 +605,7 @@ export default function BurakerosApp() {
     setGameId(savedGamePreview.gameId || createGameId());
     setGameSaved(false);
     setHasActiveGame(true);
+    setForceRoundView(false);
     setScreen("game");
   };
 
@@ -1718,6 +628,7 @@ export default function BurakerosApp() {
   const openSubRoundEntry = (rIdx, subIdx = null) => {
     setEditingRound(rIdx);
     setEditingSubIdx(subIdx);
+    setTimeout(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }), 0);
 
     if (subIdx !== null) {
       const s = rounds[rIdx][subIdx];
@@ -1738,6 +649,83 @@ export default function BurakerosApp() {
     (subEndType === "team1_closed" && t1NoMuerto) ||
     (subEndType === "team2_closed" && t2NoMuerto);
 
+  const persistCompletedGame = useCallback((completedRounds) => {
+    if (
+      gameSaved ||
+      !players.every((p) => p.trim()) ||
+      !historyLoaded
+    ) {
+      return;
+    }
+
+    const existingGame = history.find((h) => h.gameId && h.gameId === gameId);
+
+    const rt = getRoundTotals(completedRounds);
+    const cs = getCumulativeScores(completedRounds, rt, players);
+
+    const ranked = players
+      .map((name, i) => ({
+        name,
+        score: cs[i],
+      }))
+      .sort((a, b) => b.score - a.score);
+
+    const entry = {
+      gameId,
+      date: existingGame?.date || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      updatedBy: onlineUserName.trim() || existingGame?.updatedBy || null,
+      players: [...players],
+      roundTarget,
+      ranking: ranked,
+      roundDetails: completedRounds.map((subs) =>
+        subs.map((sub) => ({
+          ...sub,
+          team1Buracos: [...(sub.team1Buracos || [])],
+          team2Buracos: [...(sub.team2Buracos || [])],
+        }))
+      ),
+      rounds: completedRounds.map((subs, rIdx) => ({
+        t1: rt[rIdx].t1,
+        t2: rt[rIdx].t2,
+        subRounds: subs.length,
+      })),
+    };
+
+    const newHistory = existingGame
+      ? history.map((game) =>
+          game.gameId && game.gameId === gameId ? entry : game
+        )
+      : [entry, ...history].slice(0, 50);
+
+    setHistory(newHistory);
+    saveHistory(newHistory);
+    setGameSaved(true);
+    setHasActiveGame(false);
+    setSavedGamePreview(null);
+    clearActiveGame();
+    uploadOnlineGame(entry);
+  }, [
+    gameId,
+    gameSaved,
+    history,
+    historyLoaded,
+    players,
+    roundTarget,
+    onlineUserName,
+    uploadOnlineGame,
+  ]);
+
+  useEffect(() => {
+    if (!allFinished || gameSaved || forceRoundView) return undefined;
+
+    const timerId = setTimeout(() => {
+      persistCompletedGame(rounds);
+    }, 0);
+
+    return () => clearTimeout(timerId);
+  }, [allFinished, forceRoundView, gameSaved, persistCompletedGame, rounds]);
+
   const saveSubRound = () => {
     if (!subEndType || invalidClosingSelection) return;
 
@@ -1751,53 +739,75 @@ export default function BurakerosApp() {
       endType: subEndType,
     };
 
-    setRounds((prev) => {
-      const updated = prev.map((r) => [...r]);
+    const updated = rounds.map((r) => [...r]);
 
-      if (editingSubIdx !== null) {
-        updated[editingRound][editingSubIdx] = newSub;
-      } else {
-        updated[editingRound] = [...updated[editingRound], newSub];
+    if (editingSubIdx !== null) {
+      updated[editingRound][editingSubIdx] = newSub;
+    } else {
+      updated[editingRound] = [...updated[editingRound], newSub];
+    }
+
+    const totals = getRoundTotals(updated);
+
+    for (let i = editingRound; i < updated.length - 1; i++) {
+      const rFinished =
+        totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
+
+      if (!rFinished && updated[i + 1].length > 0) {
+        updated[i + 1] = [];
       }
+    }
 
-      const totals = getRoundTotals(updated);
-
-      for (let i = editingRound; i < updated.length - 1; i++) {
-        const rFinished =
-          totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
-
-        if (!rFinished && updated[i + 1].length > 0) {
-          updated[i + 1] = [];
-        }
-      }
-
-      return updated;
-    });
+    setRounds(updated);
 
     setEditingRound(null);
     setEditingSubIdx(null);
+
+    const updatedTotals = getRoundTotals(updated);
+    const updatedAllFinished = [0, 1, 2].every(
+      (rIdx) =>
+        updatedTotals[rIdx].t1 >= roundTarget ||
+        updatedTotals[rIdx].t2 >= roundTarget
+    );
+
+    if (updatedAllFinished) {
+      persistCompletedGame(updated);
+      setForceRoundView(false);
+    }
   };
 
   const deleteSubRound = (rIdx, sIdx) => {
-    if (!confirm("¿Eliminar esta sub-ronda?")) return;
+    if (!confirm("¿Eliminar esta sub-ronda?")) return false;
 
-    setRounds((prev) => {
-      const updated = prev.map((r) => [...r]);
-      updated[rIdx] = updated[rIdx].filter((_, i) => i !== sIdx);
+    const updated = rounds.map((r) => [...r]);
+    updated[rIdx] = updated[rIdx].filter((_, i) => i !== sIdx);
 
-      const totals = getRoundTotals(updated);
+    const totals = getRoundTotals(updated);
 
-      for (let i = rIdx; i < updated.length - 1; i++) {
-        const rFinished =
-          totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
+    for (let i = rIdx; i < updated.length - 1; i++) {
+      const rFinished =
+        totals[i].t1 >= roundTarget || totals[i].t2 >= roundTarget;
 
-        if (!rFinished && updated[i + 1].length > 0) {
-          updated[i + 1] = [];
-        }
+      if (!rFinished && updated[i + 1].length > 0) {
+        updated[i + 1] = [];
       }
+    }
 
-      return updated;
-    });
+    setRounds(updated);
+
+    const updatedTotals = getRoundTotals(updated);
+    const updatedAllFinished = [0, 1, 2].every(
+      (roundIdx) =>
+        updatedTotals[roundIdx].t1 >= roundTarget ||
+        updatedTotals[roundIdx].t2 >= roundTarget
+    );
+
+    if (updatedAllFinished) {
+      persistCompletedGame(updated);
+      setForceRoundView(false);
+    }
+
+    return true;
   };
 
   useEffect(() => {
@@ -1847,66 +857,6 @@ export default function BurakerosApp() {
     subEndType,
     faceSetIndex,
     heartFaces,
-  ]);
-
-  useEffect(() => {
-    if (
-      allFinished &&
-      !gameSaved &&
-      players.every((p) => p.trim()) &&
-      historyLoaded
-    ) {
-      const alreadySaved = history.some((h) => h.gameId && h.gameId === gameId);
-
-      if (alreadySaved) {
-        setGameSaved(true);
-        setHasActiveGame(false);
-        setSavedGamePreview(null);
-        clearActiveGame();
-        return;
-      }
-
-      const rt = getRoundTotals(rounds);
-      const cs = getCumulativeScores(rounds, rt, players);
-
-      const ranked = players
-        .map((name, i) => ({
-          name,
-          score: cs[i],
-        }))
-        .sort((a, b) => b.score - a.score);
-
-      const entry = {
-        gameId,
-        date: new Date().toISOString(),
-        players: [...players],
-        roundTarget,
-        ranking: ranked,
-        rounds: rounds.map((subs, rIdx) => ({
-          t1: rt[rIdx].t1,
-          t2: rt[rIdx].t2,
-          subRounds: subs.length,
-        })),
-      };
-
-      const newHistory = [entry, ...history].slice(0, 50);
-
-      setHistory(newHistory);
-      saveHistory(newHistory);
-      setGameSaved(true);
-      setHasActiveGame(false);
-      setSavedGamePreview(null);
-      clearActiveGame();
-    }
-  }, [
-    allFinished,
-    gameSaved,
-    players,
-    rounds,
-    history,
-    historyLoaded,
-    roundTarget,
-    gameId,
   ]);
 
   if (screen === "history") {
@@ -1978,7 +928,10 @@ export default function BurakerosApp() {
                   Ranking Histórico
                 </h3>
                 <div style={{ color: "#8a9a8c", fontSize: 12 }}>
-                  Puntos promedio y partidas jugadas
+                  {historicalMetric === "sum"
+                    ? "Suma de puntos"
+                    : "Puntos promedio"}{" "}
+                  · {historicalRangeLabel}
                 </div>
               </div>
 
@@ -2039,7 +992,13 @@ export default function BurakerosApp() {
               <select
                 id="historicalTarget"
                 value={historicalTarget}
-                onChange={(e) => setHistoricalTarget(Number(e.target.value))}
+                onChange={(e) =>
+                  setHistoricalTarget(
+                    e.target.value === ALL_TARGETS_VALUE
+                      ? ALL_TARGETS_VALUE
+                      : Number(e.target.value)
+                  )
+                }
                 style={{
                   minWidth: 130,
                   background: "rgba(13,27,14,0.9)",
@@ -2052,6 +1011,7 @@ export default function BurakerosApp() {
                   outline: "none",
                 }}
               >
+                <option value={ALL_TARGETS_VALUE}>Todos los puntajes</option>
                 {historicalTargetOptions.map((target) => (
                   <option key={target} value={target}>
                     {target} puntos
@@ -2062,6 +1022,153 @@ export default function BurakerosApp() {
 
             <div
               style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+                marginBottom: 10,
+              }}
+            >
+              {[
+                { key: "average", label: "Promedio" },
+                { key: "sum", label: "Suma" },
+              ].map((option) => {
+                const selected = historicalMetric === option.key;
+
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setHistoricalMetric(option.key)}
+                    style={{
+                      ...btn,
+                      padding: "10px 12px",
+                      fontSize: 13,
+                      background: selected
+                        ? "rgba(212,184,94,0.14)"
+                        : "rgba(232,220,200,0.05)",
+                      color: selected ? "#d4b85e" : "#c4b89a",
+                      border: `1px solid ${
+                        selected
+                          ? "rgba(212,184,94,0.32)"
+                          : "rgba(232,220,200,0.1)"
+                      }`,
+                      borderRadius: 10,
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+                marginBottom: historicalRangeMode === "recent" ? 10 : 12,
+              }}
+            >
+              {[
+                { key: "overall", label: "Overall" },
+                { key: "recent", label: "Últimos días" },
+              ].map((option) => {
+                const selected = historicalRangeMode === option.key;
+
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setHistoricalRangeMode(option.key)}
+                    style={{
+                      ...btn,
+                      padding: "10px 12px",
+                      fontSize: 13,
+                      background: selected
+                        ? "rgba(74,222,128,0.12)"
+                        : "rgba(232,220,200,0.05)",
+                      color: selected ? "#4ade80" : "#c4b89a",
+                      border: `1px solid ${
+                        selected
+                          ? "rgba(74,222,128,0.28)"
+                          : "rgba(232,220,200,0.1)"
+                      }`,
+                      borderRadius: 10,
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {historicalRangeMode === "recent" && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 12,
+                }}
+              >
+                {HISTORICAL_RANGE_DAYS_OPTIONS.map((days) => (
+                  <button
+                    key={days}
+                    type="button"
+                    onClick={() => setHistoricalRangeDays(days)}
+                    style={{
+                      ...btn,
+                      flex: 1,
+                      padding: "9px 8px",
+                      fontSize: 12,
+                      background:
+                        historicalRangeDays === days
+                          ? "rgba(74,222,128,0.12)"
+                          : "rgba(232,220,200,0.05)",
+                      color:
+                        historicalRangeDays === days ? "#4ade80" : "#8a9a8c",
+                      border: `1px solid ${
+                        historicalRangeDays === days
+                          ? "rgba(74,222,128,0.28)"
+                          : "rgba(232,220,200,0.1)"
+                      }`,
+                      borderRadius: 10,
+                    }}
+                  >
+                    {days}
+                  </button>
+                ))}
+
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  value={historicalRangeDays}
+                  onChange={(e) =>
+                    setHistoricalRangeDays(
+                      Math.max(1, parseInt(e.target.value, 10) || 1)
+                    )
+                  }
+                  aria-label="Dias del ranking historico"
+                  style={{
+                    width: 72,
+                    boxSizing: "border-box",
+                    background: "rgba(13,27,14,0.9)",
+                    color: "#e8dcc8",
+                    border: "1px solid rgba(232,220,200,0.2)",
+                    borderRadius: 10,
+                    padding: "9px 8px",
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontWeight: 700,
+                    textAlign: "center",
+                    outline: "none",
+                  }}
+                />
+              </div>
+            )}
+
+            <div
+              style={{
                 color: "#8a9a8c",
                 fontSize: 12,
                 marginBottom: historicalRanking.length > 0 ? 10 : 0,
@@ -2069,7 +1176,8 @@ export default function BurakerosApp() {
             >
               {filteredHistoricalGamesCount} partida
               {filteredHistoricalGamesCount !== 1 ? "s" : ""} considerada
-              {filteredHistoricalGamesCount !== 1 ? "s" : ""}
+              {filteredHistoricalGamesCount !== 1 ? "s" : ""} ·{" "}
+              {historicalTargetLabel}
             </div>
 
             {historicalRanking.length === 0 ? (
@@ -2084,10 +1192,14 @@ export default function BurakerosApp() {
                   border: "1px solid rgba(232,220,200,0.08)",
                 }}
               >
-                No hay partidas guardadas con este puntaje de cierre.
+                No hay partidas guardadas con estos filtros.
               </div>
             ) : (
-              <HistoricalRankingRows ranking={historicalRanking} />
+              <HistoricalRankingRows
+                ranking={historicalRanking}
+                metric={historicalMetric}
+                heartFaces={heartFaces}
+              />
             )}
           </div>
 
@@ -2104,6 +1216,9 @@ export default function BurakerosApp() {
               <HistoricalRankingImageCard
                 ranking={historicalRanking}
                 target={historicalTarget}
+                metric={historicalMetric}
+                rangeLabel={historicalRangeLabel}
+                heartFaces={heartFaces}
               />
             </div>
           </div>
@@ -2125,6 +1240,7 @@ export default function BurakerosApp() {
           ) : (
             history.map((game, gIdx) => {
               const d = new Date(game.date);
+              const canEditHistoricalGame = hasRoundDetails(game);
 
               const dateStr = d.toLocaleDateString("es", {
                 day: "numeric",
@@ -2140,12 +1256,25 @@ export default function BurakerosApp() {
               return (
                 <div
                   key={`${game.date}-${gIdx}`}
+                  onClick={() => openHistoricalGame(game)}
+                  role={canEditHistoricalGame ? "button" : undefined}
+                  tabIndex={canEditHistoricalGame ? 0 : undefined}
+                  onKeyDown={(e) => {
+                    if (
+                      canEditHistoricalGame &&
+                      (e.key === "Enter" || e.key === " ")
+                    ) {
+                      e.preventDefault();
+                      openHistoricalGame(game);
+                    }
+                  }}
                   style={{
                     background: "rgba(232,220,200,0.06)",
                     borderRadius: 14,
                     padding: 16,
                     border: "1px solid rgba(232,220,200,0.1)",
                     marginBottom: 12,
+                    cursor: canEditHistoricalGame ? "pointer" : "default",
                   }}
                 >
                   <div
@@ -2169,9 +1298,38 @@ export default function BurakerosApp() {
                       >
                         Rondas a {game.roundTarget || 3000} pts
                       </div>
+                      <div
+                        style={{
+                          color: canEditHistoricalGame ? "#d4b85e" : "#555",
+                          fontSize: 11,
+                          marginTop: 2,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {canEditHistoricalGame
+                          ? "Click para ver/modificar"
+                          : "Sin detalle de rondas"}
+                      </div>
                     </div>
 
-                    <span style={{ fontSize: 14 }}>🏆</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteHistoricalGame(game);
+                      }}
+                      style={{
+                        ...btn,
+                        padding: "7px 10px",
+                        fontSize: 11,
+                        background: "rgba(248,113,113,0.1)",
+                        color: "#f87171",
+                        border: "1px solid rgba(248,113,113,0.2)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Borrar
+                    </button>
                   </div>
 
                   {game.ranking.map((p, pIdx) => (
@@ -2214,6 +1372,12 @@ export default function BurakerosApp() {
                           {pIdx + 1}
                         </span>
 
+                        <PlayerAvatar
+                          name={p.name}
+                          heartFaces={heartFaces}
+                          size={28}
+                        />
+
                         <span style={{ color: "#e8dcc8", fontSize: 14 }}>
                           {p.name}
                         </span>
@@ -2242,11 +1406,7 @@ export default function BurakerosApp() {
               onClick={() => {
                 if (confirm("¿Borrar todo el historial?")) {
                   setHistory([]);
-                  try {
-                    localStorage.removeItem(HISTORY_STORAGE_KEY);
-                  } catch (e) {
-                    console.error(e);
-                  }
+                  saveHistory([]);
                 }
               }}
               style={{
@@ -2405,6 +1565,205 @@ export default function BurakerosApp() {
               </div>
             </div>
           )}
+
+          <div
+            style={{
+              background: "rgba(232,220,200,0.06)",
+              borderRadius: 16,
+              padding: 16,
+              border: "1px solid rgba(232,220,200,0.1)",
+              marginBottom: 14,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ textAlign: "left", minWidth: 0 }}>
+                <div
+                  style={{
+                    color: "#e8dcc8",
+                    fontFamily: "'Playfair Display', serif",
+                    fontSize: 16,
+                    fontWeight: 900,
+                  }}
+                >
+                  Historial online
+                </div>
+                <div
+                  style={{
+                    color: onlineGroupName ? "#4ade80" : "#8a9a8c",
+                    fontSize: 11,
+                    marginTop: 2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {onlineStatus}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                {onlineGroupName && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOnlineAccessCode("");
+                      setOnlineGroupName("");
+                      setOnlineUserName("");
+                      setCreatedGroupCode("");
+                      setOnlineStatus("Desconectado");
+                      saveOnlineAccessCode("");
+                      saveOnlineGroupName("");
+                      saveOnlineUser("");
+                    }}
+                    style={{
+                      ...btn,
+                      padding: "7px 10px",
+                      fontSize: 11,
+                      background: "rgba(248,113,113,0.1)",
+                      color: "#f87171",
+                      border: "1px solid rgba(248,113,113,0.2)",
+                    }}
+                  >
+                    Salir
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setOnlinePanelOpen((value) => !value)}
+                  style={{
+                    ...btn,
+                    padding: "7px 10px",
+                    fontSize: 11,
+                    background: "rgba(232,220,200,0.06)",
+                    color: "#c4b89a",
+                    border: "1px solid rgba(232,220,200,0.14)",
+                  }}
+                >
+                  {onlinePanelOpen ? "Ocultar" : "Abrir"}
+                </button>
+              </div>
+            </div>
+
+            {onlinePanelOpen && (
+              <>
+                <input
+              value={onlineUserName || onlineGroupName}
+              onChange={(e) => {
+                setOnlineUserName(e.target.value);
+                setOnlineGroupName(e.target.value);
+              }}
+              placeholder="Usuario / grupo"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                marginBottom: 10,
+                border: "1px solid rgba(232,220,200,0.2)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                fontSize: 14,
+                fontFamily: "'DM Sans', sans-serif",
+                background: "rgba(250,249,246,0.08)",
+                color: "#e8dcc8",
+                outline: "none",
+              }}
+            />
+
+                <input
+              type="password"
+              value={onlineAccessCode}
+              onChange={(e) => setOnlineAccessCode(e.target.value)}
+              placeholder="Contraseña (opcional)"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                marginBottom: 10,
+                border: "1px solid rgba(232,220,200,0.2)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                fontSize: 14,
+                fontFamily: "'DM Sans', sans-serif",
+                background: "rgba(250,249,246,0.08)",
+                color: "#e8dcc8",
+                outline: "none",
+              }}
+            />
+
+                {createdGroupCode && (
+              <div
+                style={{
+                  color: "#d4b85e",
+                  fontSize: 12,
+                  marginBottom: 10,
+                  background: "rgba(212,184,94,0.1)",
+                  border: "1px solid rgba(212,184,94,0.22)",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                }}
+              >
+                Clave nueva: {createdGroupCode}
+              </div>
+            )}
+
+                <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={connectOnlineHistory}
+                disabled={syncingOnline || !hasSupabaseConfig}
+                style={{
+                  ...btn,
+                  flex: 1,
+                  padding: "10px 8px",
+                  fontSize: 13,
+                  background: "rgba(212,184,94,0.12)",
+                  color: "#d4b85e",
+                  border: "1px solid rgba(212,184,94,0.28)",
+                  opacity: syncingOnline || !hasSupabaseConfig ? 0.55 : 1,
+                }}
+              >
+                {syncingOnline ? "Sincronizando..." : "Conectar"}
+              </button>
+
+              <button
+                type="button"
+                onClick={createOnlineGroup}
+                disabled={
+                  syncingOnline ||
+                  !hasSupabaseConfig ||
+                  !onlineUserName.trim() ||
+                  !onlineGroupName.trim()
+                }
+                style={{
+                  ...btn,
+                  flex: 1,
+                  padding: "10px 8px",
+                  fontSize: 13,
+                  background: "rgba(96,165,250,0.12)",
+                  color: "#60a5fa",
+                  border: "1px solid rgba(96,165,250,0.25)",
+                  opacity:
+                    syncingOnline ||
+                    !hasSupabaseConfig ||
+                    !onlineUserName.trim() ||
+                    !onlineGroupName.trim()
+                      ? 0.55
+                      : 1,
+                }}
+              >
+                Crear grupo
+              </button>
+            </div>
+              </>
+            )}
+          </div>
 
           <div
             style={{
@@ -2669,7 +2028,7 @@ export default function BurakerosApp() {
               setT1Buracos((p) => p.filter((_, i) => i !== idx))
             }
             noMuerto={t1NoMuerto}
-            onToggleNoMuerto={() => setT1NoMuerto((v) => !v)}
+            onToggleNoMuerto={toggleTeam1NoMuerto}
           />
 
           <TeamEntryPanel
@@ -2682,7 +2041,7 @@ export default function BurakerosApp() {
               setT2Buracos((p) => p.filter((_, i) => i !== idx))
             }
             noMuerto={t2NoMuerto}
-            onToggleNoMuerto={() => setT2NoMuerto((v) => !v)}
+            onToggleNoMuerto={toggleTeam2NoMuerto}
           />
 
           <EndTypeSelector
@@ -2742,9 +2101,10 @@ export default function BurakerosApp() {
             <button
               type="button"
               onClick={() => {
-                deleteSubRound(editingRound, editingSubIdx);
-                setEditingRound(null);
-                setEditingSubIdx(null);
+                if (deleteSubRound(editingRound, editingSubIdx)) {
+                  setEditingRound(null);
+                  setEditingSubIdx(null);
+                }
               }}
               style={{
                 ...btn,
@@ -2766,7 +2126,7 @@ export default function BurakerosApp() {
     );
   }
 
-  if (allFinished) {
+  if (allFinished && !forceRoundView) {
     const winner = ranking[0];
     const lastPlace = ranking[ranking.length - 1];
 
@@ -3006,6 +2366,22 @@ export default function BurakerosApp() {
           <div style={{ display: "flex", gap: 10 }}>
             <button
               type="button"
+              onClick={editFinishedRounds}
+              style={{
+                ...btn,
+                flex: 1,
+                padding: "13px 0",
+                fontSize: 15,
+                background: "rgba(212,184,94,0.12)",
+                color: "#d4b85e",
+                border: "1px solid rgba(212,184,94,0.28)",
+              }}
+            >
+              Editar rondas
+            </button>
+
+            <button
+              type="button"
               onClick={returnToSetup}
               style={{
                 ...btn,
@@ -3180,7 +2556,7 @@ export default function BurakerosApp() {
             <br />
             Si botas comodín: tu equipo va negativo
             <br />
-            Si el rival bota comodín: tú no recibes penalización por no tener buraco
+            Si el rival bota comodín: tu equipo queda en 0
             <br />
             Si se acaban las cartas: nadie cierra, sin buraco va negativo
           </div>
