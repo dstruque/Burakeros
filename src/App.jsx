@@ -13,8 +13,47 @@ const BURACO_TYPES = [
   { key: "as_sucio", label: "As Sucio", pts: 500, color: "#8b5cf6" },
 ];
 
-const FACE_LEFT = "/mujer.png";
-const FACE_RIGHT = "/hombre.png";
+const FACE_SETS = [
+  {
+    normal: { woman: "/mujer.png", man: "/hombre.png" },
+    hearts: { woman: "/mujerC.png", man: "/HombreC.png" },
+  },
+  {
+    normal: { woman: "/mujer2.png", man: "/hombre2.png" },
+    hearts: { woman: "/mujer2c.png", man: "/Hombre2c.png" },
+  },
+  {
+    normal: { woman: "/mujer3.png", man: "/hombre3.png" },
+    hearts: { woman: "/mujer3c.png", man: "/Hombre3c.png" },
+  },
+];
+
+const PLAYER_AVATARS = {
+  fernando: {
+    normal: "/hombre.png",
+    hearts: "/HombreC.png",
+  },
+  lucy: {
+    normal: "/mujer.png",
+    hearts: "/mujerC.png",
+  },
+  audrey: {
+    normal: "/mujer2.png",
+    hearts: "/mujer2c.png",
+  },
+  "juan miguel": {
+    normal: "/hombre2.png",
+    hearts: "/Hombre2c.png",
+  },
+  werner: {
+    normal: "/hombre3.png",
+    hearts: "/Hombre3c.png",
+  },
+  ivette: {
+    normal: "/mujer3.png",
+    hearts: "/mujer3c.png",
+  },
+};
 
 const HISTORY_STORAGE_KEY = "burakeros-history";
 const ACTIVE_GAME_STORAGE_KEY = "burakeros-active-game";
@@ -88,6 +127,17 @@ function AppStyles() {
           }
         }
 
+        @keyframes winnerPop {
+          0% {
+            transform: scale(0.92);
+            opacity: 0;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 1;
+          }
+        }
+
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
           -webkit-appearance: none;
@@ -112,6 +162,20 @@ function createGameId() {
   }
 
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizeName(name) {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function getPlayerAvatar(name, heartFaces) {
+  const avatar = PLAYER_AVATARS[normalizeName(name)];
+  if (!avatar) return null;
+  return heartFaces ? avatar.hearts : avatar.normal;
 }
 
 function getEndTypeInfo(endType) {
@@ -266,6 +330,98 @@ function saveLastPlayers(players) {
   } catch (e) {
     console.error(e);
   }
+}
+
+function SuitEasterEggs({
+  onDiamondClick,
+  onHeartClick,
+  heartFaces,
+  compact = false,
+}) {
+  return (
+    <div
+      style={{
+        fontSize: compact ? 22 : 28,
+        marginBottom: compact ? 6 : 8,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: compact ? 8 : 10,
+        userSelect: "none",
+      }}
+    >
+      <span>♠</span>
+      <button
+        type="button"
+        onClick={onHeartClick}
+        aria-label="Activar corazones"
+        style={{
+          border: "none",
+          background: "transparent",
+          color: heartFaces ? "#fb7185" : "inherit",
+          fontSize: "inherit",
+          padding: 0,
+          cursor: "pointer",
+          lineHeight: 1,
+          filter: heartFaces
+            ? "drop-shadow(0 0 8px rgba(251,113,133,0.7))"
+            : "none",
+        }}
+      >
+        ♥
+      </button>
+      <button
+        type="button"
+        onClick={onDiamondClick}
+        aria-label="Cambiar caras"
+        style={{
+          border: "none",
+          background: "transparent",
+          color: "inherit",
+          fontSize: "inherit",
+          padding: 0,
+          cursor: "pointer",
+          lineHeight: 1,
+        }}
+      >
+        ♦
+      </button>
+      <span>♣</span>
+    </div>
+  );
+}
+
+function PlayerAvatar({ name, heartFaces, size = 34 }) {
+  const src = getPlayerAvatar(name, heartFaces);
+
+  if (!src) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          background: "rgba(232,220,200,0.08)",
+          border: "1px solid rgba(232,220,200,0.12)",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={name}
+      style={{
+        width: size,
+        height: size,
+        objectFit: "contain",
+        flexShrink: 0,
+        filter: "drop-shadow(0 3px 7px rgba(0,0,0,0.28))",
+      }}
+    />
+  );
 }
 
 function BuracoSelector({ buracos, onAdd, onRemove }) {
@@ -465,12 +621,7 @@ function TeamEntryPanel({
   );
 }
 
-function EndTypeSelector({
-  pair1Name,
-  pair2Name,
-  endType,
-  onChange,
-}) {
+function EndTypeSelector({ pair1Name, pair2Name, endType, onChange }) {
   const options = [
     {
       key: "team1_closed",
@@ -599,6 +750,9 @@ export default function BurakerosApp() {
   const [lastPlayers, setLastPlayers] = useState([]);
   const [gameId, setGameId] = useState(null);
 
+  const [faceSetIndex, setFaceSetIndex] = useState(0);
+  const [heartFaces, setHeartFaces] = useState(false);
+
   useEffect(() => {
     const h = loadHistory();
     const active = loadActiveGame();
@@ -612,6 +766,9 @@ export default function BurakerosApp() {
       setSavedGamePreview(active);
     }
   }, []);
+
+  const currentFaceSet = FACE_SETS[faceSetIndex];
+  const headerFaces = heartFaces ? currentFaceSet.hearts : currentFaceSet.normal;
 
   const roundTotals = useMemo(() => getRoundTotals(rounds), [rounds]);
 
@@ -667,6 +824,14 @@ export default function BurakerosApp() {
     setEditingSubIdx(null);
     setGameId(null);
     resetInputs();
+  };
+
+  const cycleFaces = () => {
+    setFaceSetIndex((prev) => (prev + 1) % FACE_SETS.length);
+  };
+
+  const toggleHeartFaces = () => {
+    setHeartFaces((prev) => !prev);
   };
 
   const openHistoryFromSetup = () => {
@@ -727,6 +892,9 @@ export default function BurakerosApp() {
     setT1NoMuerto(savedGamePreview.t1NoMuerto || false);
     setT2NoMuerto(savedGamePreview.t2NoMuerto || false);
     setSubEndType(savedGamePreview.subEndType || null);
+
+    setFaceSetIndex(savedGamePreview.faceSetIndex || 0);
+    setHeartFaces(savedGamePreview.heartFaces || false);
 
     setGameId(savedGamePreview.gameId || createGameId());
     setGameSaved(false);
@@ -825,6 +993,8 @@ export default function BurakerosApp() {
         t1NoMuerto,
         t2NoMuerto,
         subEndType,
+        faceSetIndex,
+        heartFaces,
         savedAt: new Date().toISOString(),
       };
 
@@ -847,6 +1017,8 @@ export default function BurakerosApp() {
     t1NoMuerto,
     t2NoMuerto,
     subEndType,
+    faceSetIndex,
+    heartFaces,
   ]);
 
   useEffect(() => {
@@ -1071,54 +1243,6 @@ export default function BurakerosApp() {
                       </span>
                     </div>
                   ))}
-
-                  {game.rounds && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        display: "flex",
-                        gap: 6,
-                      }}
-                    >
-                      {game.rounds.map((r, ri) => (
-                        <div
-                          key={`round-${ri}`}
-                          style={{
-                            flex: 1,
-                            background: "rgba(232,220,200,0.05)",
-                            borderRadius: 8,
-                            padding: "6px 8px",
-                            textAlign: "center",
-                          }}
-                        >
-                          <div
-                            style={{
-                              color: "#8a9a8c",
-                              fontSize: 10,
-                              marginBottom: 2,
-                            }}
-                          >
-                            R{ri + 1}
-                          </div>
-
-                          <div
-                            style={{
-                              color: "#a8b0a8",
-                              fontSize: 12,
-                              fontWeight: 600,
-                            }}
-                          >
-                            {r.t1} vs {r.t2}
-                          </div>
-
-                          <div style={{ color: "#666", fontSize: 10 }}>
-                            {r.subRounds} sub
-                            {r.subRounds !== 1 ? "s" : ""}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               );
             })
@@ -1173,10 +1297,18 @@ export default function BurakerosApp() {
 
         <div style={{ width: "100%", maxWidth: 420 }}>
           <div style={{ textAlign: "center", marginBottom: 32 }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>♠ ♥ ♦ ♣</div>
+            <SuitEasterEggs
+              onDiamondClick={cycleFaces}
+              onHeartClick={toggleHeartFaces}
+              heartFaces={heartFaces}
+            />
 
             <div style={faceWrapStyle}>
-              <img src={FACE_LEFT} alt="Burakera" style={setupFaceStyle} />
+              <img
+                src={headerFaces.woman}
+                alt="Burakera"
+                style={setupFaceStyle}
+              />
 
               <h1
                 style={{
@@ -1192,7 +1324,7 @@ export default function BurakerosApp() {
               </h1>
 
               <img
-                src={FACE_RIGHT}
+                src={headerFaces.man}
                 alt="Burakero"
                 style={setupFaceReverseStyle}
               />
@@ -1626,6 +1758,249 @@ export default function BurakerosApp() {
     );
   }
 
+  if (allFinished) {
+    const winner = ranking[0];
+    const lastPlace = ranking[ranking.length - 1];
+
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: bg,
+          padding: 16,
+          fontFamily: "'DM Sans', sans-serif",
+        }}
+      >
+        <AppStyles />
+
+        <div style={{ maxWidth: 460, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 20 }}>
+            <SuitEasterEggs
+              onDiamondClick={cycleFaces}
+              onHeartClick={toggleHeartFaces}
+              heartFaces={heartFaces}
+              compact
+            />
+
+            <div style={faceWrapStyle}>
+              <img
+                src={headerFaces.woman}
+                alt="Burakera"
+                style={gameFaceStyle}
+              />
+
+              <h1
+                style={{
+                  fontFamily: "'Playfair Display', serif",
+                  fontSize: 30,
+                  fontWeight: 900,
+                  color: "#e8dcc8",
+                  margin: 0,
+                  lineHeight: 1,
+                }}
+              >
+                BURAKEROS
+              </h1>
+
+              <img
+                src={headerFaces.man}
+                alt="Burakero"
+                style={gameFaceReverseStyle}
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              animation: "winnerPop 0.45s ease-out",
+              background:
+                "linear-gradient(135deg, rgba(196,162,78,0.16), rgba(212,184,94,0.08))",
+              borderRadius: 18,
+              padding: 22,
+              border: "1px solid rgba(212,184,94,0.35)",
+              marginBottom: 16,
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 46, marginBottom: 8 }}>🎉</div>
+
+            <h2
+              style={{
+                fontFamily: "'Playfair Display', serif",
+                color: "#d4b85e",
+                fontSize: 28,
+                margin: "0 0 6px",
+              }}
+            >
+              ¡{winner.name} gana!
+            </h2>
+
+            <p
+              style={{
+                color: "#c4b89a",
+                fontSize: 16,
+                margin: 0,
+              }}
+            >
+              {winner.score} puntos
+            </p>
+          </div>
+
+          <div
+            style={{
+              background: "rgba(232,220,200,0.06)",
+              borderRadius: 16,
+              padding: 16,
+              border: "1px solid rgba(232,220,200,0.1)",
+              marginBottom: 16,
+            }}
+          >
+            <h3
+              style={{
+                fontFamily: "'Playfair Display', serif",
+                color: "#e8dcc8",
+                fontSize: 19,
+                margin: "0 0 12px",
+              }}
+            >
+              Ranking Final
+            </h3>
+
+            {ranking.map((p, i) => (
+              <div
+                key={p.index}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 0",
+                  borderBottom:
+                    i < ranking.length - 1
+                      ? "1px solid rgba(232,220,200,0.08)"
+                      : "none",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "'Playfair Display', serif",
+                      fontSize: 22,
+                      fontWeight: 900,
+                      color:
+                        i === 0
+                          ? "#d4b85e"
+                          : i === 1
+                          ? "#94a3b8"
+                          : i === 2
+                          ? "#b45309"
+                          : "#777",
+                      width: 28,
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+
+                  <PlayerAvatar name={p.name} heartFaces={heartFaces} size={40} />
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: "#e8dcc8",
+                        fontSize: 16,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {p.name}
+                    </span>
+
+                    {i === 0 && (
+                      <span style={{ fontSize: 20 }} title="Campeón">
+                        🏆
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <span
+                  style={{
+                    fontFamily: "'Playfair Display', serif",
+                    fontSize: 19,
+                    fontWeight: 900,
+                    color: p.score >= 0 ? "#4ade80" : "#f87171",
+                  }}
+                >
+                  {p.score}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              background: "rgba(248,113,113,0.1)",
+              border: "1px solid rgba(248,113,113,0.22)",
+              borderRadius: 16,
+              padding: 16,
+              textAlign: "center",
+              color: "#fda4af",
+              fontFamily: "'Playfair Display', serif",
+              fontWeight: 900,
+              fontSize: 19,
+              marginBottom: 16,
+            }}
+          >
+            {lastPlace.name}, quedaste en el sótano!
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              type="button"
+              onClick={returnToSetup}
+              style={{
+                ...btn,
+                flex: 1,
+                padding: "13px 0",
+                fontSize: 15,
+                background: gold,
+                color: "#1a1a2e",
+              }}
+            >
+              Nuevo juego
+            </button>
+
+            <button
+              type="button"
+              onClick={openHistoryFromGame}
+              style={{
+                ...btn,
+                flex: 1,
+                padding: "13px 0",
+                fontSize: 15,
+                background: "rgba(232,220,200,0.06)",
+                color: "#c4b89a",
+                border: "1px solid rgba(232,220,200,0.15)",
+              }}
+            >
+              Historial
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const activeRound = getActiveRound();
 
   return (
@@ -1641,8 +2016,19 @@ export default function BurakerosApp() {
 
       <div style={{ maxWidth: 460, margin: "0 auto" }}>
         <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <SuitEasterEggs
+            onDiamondClick={cycleFaces}
+            onHeartClick={toggleHeartFaces}
+            heartFaces={heartFaces}
+            compact
+          />
+
           <div style={faceWrapStyle}>
-            <img src={FACE_LEFT} alt="Burakera" style={gameFaceStyle} />
+            <img
+              src={headerFaces.woman}
+              alt="Burakera"
+              style={gameFaceStyle}
+            />
 
             <h1
               style={{
@@ -1658,7 +2044,7 @@ export default function BurakerosApp() {
             </h1>
 
             <img
-              src={FACE_RIGHT}
+              src={headerFaces.man}
               alt="Burakero"
               style={gameFaceReverseStyle}
             />
@@ -1759,43 +2145,6 @@ export default function BurakerosApp() {
           </div>
         )}
 
-        {allFinished && (
-          <div
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(196,162,78,0.12), rgba(212,184,94,0.12))",
-              borderRadius: 14,
-              padding: 20,
-              border: "1px solid rgba(196,162,78,0.3)",
-              marginBottom: 16,
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: 36, marginBottom: 6 }}>🏆</div>
-
-            <h2
-              style={{
-                fontFamily: "'Playfair Display', serif",
-                color: "#d4b85e",
-                fontSize: 22,
-                margin: 0,
-              }}
-            >
-              ¡{ranking[0].name} gana!
-            </h2>
-
-            <p
-              style={{
-                color: "#c4b89a",
-                fontSize: 15,
-                margin: "4px 0 0",
-              }}
-            >
-              {ranking[0].score} puntos
-            </p>
-          </div>
-        )}
-
         <div
           style={{
             background: "rgba(232,220,200,0.06)",
@@ -1853,6 +2202,8 @@ export default function BurakerosApp() {
                 >
                   {i + 1}
                 </span>
+
+                <PlayerAvatar name={p.name} heartFaces={heartFaces} />
 
                 <span style={{ color: "#e8dcc8", fontSize: 15 }}>
                   {p.name}
